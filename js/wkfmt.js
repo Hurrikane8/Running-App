@@ -2,7 +2,7 @@
 
 import { loadState, saveState } from './storage.js';
 import { pacesForProfile } from './plangen.js';
-import { fmtDist, fmtPace, fmtPaceRange, fmtTime, esc, kmToUnit, unitToKm, todayStr } from './util.js';
+import { fmtDist, fmtPaceDisplay, fmtPaceRangeDisplay, fmtTime, esc, kmToUnit, unitToKm, todayStr } from './util.js';
 
 export const TYPE_LABEL = {
   easy: 'Easy', recovery: 'Recovery', long: 'Long run', tempo: 'Threshold',
@@ -19,49 +19,49 @@ export function chipFor(w) {
   return `<span class="chip ${q}">${TYPE_LABEL[w.type] || w.type}</span>`;
 }
 
-// "8 km · easy pace 6:30–7:10 /km" or "2 h on feet · easy effort"
-export function targetLine(w, profile, units) {
+// "8 km · easy pace 6:30–7:10 /km" (or "easy 5.2–6.0 mph" in treadmill mode)
+export function targetLine(w, profile, settings) {
   const parts = [];
-  if (w.distKm != null) parts.push(fmtDist(w.distKm, units));
+  if (w.distKm != null) parts.push(fmtDist(w.distKm, settings.units));
   if (w.durMin != null) parts.push(w.durMin >= 60 ? `${Math.floor(w.durMin / 60)} h ${w.durMin % 60 ? (w.durMin % 60) + ' min' : ''}`.trim() : `${w.durMin} min`);
-  const pace = paceTarget(w, profile, units);
+  const pace = paceTarget(w, profile, settings);
   if (pace) parts.push(pace);
   return parts.join(' · ');
 }
 
-export function paceTarget(w, profile, units) {
+export function paceTarget(w, profile, settings) {
   if (!w.paceKey || !profile) return w.type === 'long' && !w.paceKey ? 'easy effort (RPE 3–4)' : null;
   const p = pacesForProfile(profile);
   switch (w.paceKey) {
-    case 'easy': return `easy ${fmtPaceRange(p.easy[0], p.easy[1], units)}`;
-    case 'marathon': return `goal pace ${fmtPace(p.marathon, units)}`;
-    case 'threshold': return `threshold ${fmtPace(p.threshold, units)}`;
-    case 'interval': return `interval ${fmtPace(p.interval, units)}`;
-    case 'rep': return `rep pace ${fmtPace(p.rep, units)}`;
+    case 'easy': return `easy ${fmtPaceRangeDisplay(p.easy[0], p.easy[1], settings)}`;
+    case 'marathon': return `goal pace ${fmtPaceDisplay(p.marathon, settings)}`;
+    case 'threshold': return `threshold ${fmtPaceDisplay(p.threshold, settings)}`;
+    case 'interval': return `interval ${fmtPaceDisplay(p.interval, settings)}`;
+    case 'rep': return `rep pace ${fmtPaceDisplay(p.rep, settings)}`;
     default: return null;
   }
 }
 
-export function structureRows(w, profile, units) {
+export function structureRows(w, profile, settings) {
   const rows = [];
   if (w.structure.warmup) rows.push(['Warm-up', w.structure.warmup]);
-  rows.push(['Main set', decoratePaces(w.structure.main, w, profile, units)]);
+  rows.push(['Main set', decoratePaces(w.structure.main, w, profile, settings)]);
   if (w.structure.cooldown) rows.push(['Cool-down', w.structure.cooldown]);
   return rows.map(([k, v]) =>
     `<div class="structure-row"><div class="structure-label">${k}</div><div class="structure-body">${v}</div></div>`).join('');
 }
 
-function decoratePaces(text, w, profile, units) {
+function decoratePaces(text, w, profile, settings) {
   if (!profile) return esc(text);
   const p = pacesForProfile(profile);
   const map = {
-    'easy pace': `easy pace <span class="pace-pill">${fmtPaceRange(p.easy[0], p.easy[1], units)}</span>`,
-    'threshold pace': `threshold pace <span class="pace-pill">${fmtPace(p.threshold, units)}</span>`,
-    'interval pace': `interval pace <span class="pace-pill">${fmtPace(p.interval, units)}</span>`,
-    'repetition pace': `repetition pace <span class="pace-pill">${fmtPace(p.rep, units)}</span>`,
-    'marathon (goal) pace': `marathon (goal) pace <span class="pace-pill">${fmtPace(p.marathon, units)}</span>`,
-    'marathon pace': `marathon pace <span class="pace-pill">${fmtPace(p.marathon, units)}</span>`,
-    'goal pace': `goal pace <span class="pace-pill">${fmtPace(p.marathon, units)}</span>`,
+    'easy pace': `easy pace <span class="pace-pill">${fmtPaceRangeDisplay(p.easy[0], p.easy[1], settings)}</span>`,
+    'threshold pace': `threshold pace <span class="pace-pill">${fmtPaceDisplay(p.threshold, settings)}</span>`,
+    'interval pace': `interval pace <span class="pace-pill">${fmtPaceDisplay(p.interval, settings)}</span>`,
+    'repetition pace': `repetition pace <span class="pace-pill">${fmtPaceDisplay(p.rep, settings)}</span>`,
+    'marathon (goal) pace': `marathon (goal) pace <span class="pace-pill">${fmtPaceDisplay(p.marathon, settings)}</span>`,
+    'marathon pace': `marathon pace <span class="pace-pill">${fmtPaceDisplay(p.marathon, settings)}</span>`,
+    'goal pace': `goal pace <span class="pace-pill">${fmtPaceDisplay(p.marathon, settings)}</span>`,
   };
   let out = esc(text);
   for (const [k, v] of Object.entries(map)) out = out.replace(new RegExp(k, 'i'), v);
@@ -134,7 +134,7 @@ export function openLogModal(workout, onSaved) {
     const prev = el.querySelector('#log-pace-preview');
     if (distU > 0 && sec > 0) {
       const distKm = unitToKm(distU, units);
-      prev.textContent = `Pace: ${fmtPace(sec / distKm, units)} · ${fmtTime(sec)}`;
+      prev.textContent = `Pace: ${fmtPaceDisplay(sec / distKm, state.settings)} · ${fmtTime(sec)}`;
     } else prev.textContent = '';
   };
   const timeSec = () => {

@@ -47,7 +47,11 @@ as a fraction of the week.
   progression is the classic overload-recovery cycle from Bompa's periodization
   model), reduced further when injury flags are set.
 - Every 4th week is a **deload** (~70–75% volume) — the standard 3:1
-  load:recovery mesocycle.
+  load:recovery mesocycle. This is deliberate step-loading: the ~10% cap
+  applies between *full-load* weeks, so the week after a deload resumes one
+  growth step above the previous full-load week. The apparent large jump out
+  of a recovery week is the return to the loading trajectory, not a
+  progression violation.
 - The long run is capped at ~30–35% of weekly volume.
 
 ### Ultramarathon adaptations (50K–100 mi)
