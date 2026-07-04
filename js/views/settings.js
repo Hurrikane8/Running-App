@@ -4,7 +4,7 @@
 import { loadState, saveState, resetState, exportState, importState } from '../storage.js';
 import { GOALS, replanFrom, pacesForProfile } from '../plangen.js';
 import { vdotFromRace } from '../paces.js';
-import { todayStr, addDays, esc, fmtPaceRangeDisplay, fmtPaceDisplay, kmToUnit, unitToKm, fmtDist } from '../util.js';
+import { todayStr, addDays, esc, fmtPaceRangeDisplay, fmtPaceDisplay, kmToUnit, unitToKm } from '../util.js';
 import { openModal, closeModal } from '../wkfmt.js';
 
 const RACE_INPUT_DISTS = [
@@ -21,17 +21,6 @@ export function renderSettings(container, refresh, restartOnboarding) {
   const units = settings.units;
   const p = pacesForProfile(profile);
   const g = GOALS[profile.goal];
-
-  const weekRows = plan ? plan.weeks.map((w) => {
-    const maxKm = Math.max(...plan.weeks.map((x) => x.targetKm));
-    const cur = w.start <= todayStr() && todayStr() <= addDays(w.start, 6);
-    return `<div class="plan-week-row ${cur ? 'cur' : ''}">
-      <span class="wn">W${w.idx + 1}</span>
-      <span class="ph phase-chip">${w.deload ? 'recovery' : w.phase}</span>
-      <span class="bar"><i style="width:${Math.round((w.targetKm / maxKm) * 100)}%"></i></span>
-      <span class="km">${fmtDist(w.targetKm, units, 0)}</span>
-    </div>`;
-  }).join('') : '';
 
   container.innerHTML = `
     <h1 class="screen-title">Settings</h1>
@@ -70,16 +59,14 @@ export function renderSettings(container, refresh, restartOnboarding) {
       <div class="btn-row"><button class="btn" id="edit-fitness">Update fitness (new race / time trial)</button></div>
     </div>
 
-    ${plan ? `<div class="card"><h3 style="margin-bottom:8px">Plan overview — ${plan.weeks.length} weeks</h3>${weekRows}</div>` : ''}
-
     <div class="card">
-      <h3 style="margin-bottom:10px">Data</h3>
+      <h3 style="margin-bottom:6px">Data</h3>
+      <p class="hint" style="margin-bottom:12px">Your plan and every logged workout live only in this browser. Export a JSON backup regularly — it restores everything if local storage is ever cleared.</p>
       <div class="btn-row" style="margin-top:0">
-        <button class="btn" id="export-data">Export backup</button>
-        <button class="btn" id="import-data">Import</button>
+        <button class="btn" id="export-data">Export data</button>
+        <button class="btn" id="import-data">Import data</button>
       </div>
       <div class="btn-row"><button class="btn ghost danger" id="reset-all">Erase everything &amp; start over</button></div>
-      <p class="hint">All data lives in this browser only. Export a backup before clearing browser data.</p>
     </div>
     <input type="file" id="import-file" accept="application/json" hidden>
   `;

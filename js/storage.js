@@ -4,7 +4,7 @@
 
 const KEY = 'stride.state.v1'; // storage key is stable; `version` tracks the schema
 
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 
 const DEFAULT_STATE = {
   version: STATE_VERSION,
@@ -21,6 +21,24 @@ const MIGRATIONS = {
   1: (s) => {
     s.settings = { units: 'km', ...s.settings };
     if (!s.settings.paceDisplay) s.settings.paceDisplay = 'outdoor';
+    return s;
+  },
+  // v2 → v3: plans used to schedule workouts on days earlier in the calendar
+  // week than the plan's creation date, which instantly read as "missed".
+  // Strip those phantom entries (only untouched, still-planned ones — any
+  // workout the user logged or skipped is kept).
+  2: (s) => {
+    if (s.plan?.weeks && s.plan.createdAt) {
+      for (const w of s.plan.weeks) {
+        const before = w.workouts.length;
+        w.workouts = w.workouts.filter(
+          (x) => x.date >= s.plan.createdAt || x.status !== 'planned');
+        if (w.workouts.length !== before) {
+          w.targetKm = Math.round(w.workouts.reduce(
+            (sum, x) => sum + (x.distKm ?? (x.durMin ? x.durMin / 7 : 0)), 0));
+        }
+      }
+    }
     return s;
   },
 };

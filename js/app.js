@@ -4,8 +4,10 @@ import { loadState } from './storage.js';
 import { renderOnboarding } from './views/onboarding.js';
 import { renderToday } from './views/today.js';
 import { renderWeek, resetWeekView } from './views/week.js';
+import { renderPlan } from './views/plan.js';
 import { renderProgress } from './views/progress.js';
 import { renderSettings } from './views/settings.js';
+import { quoteForDate } from './quotes.js';
 import { GOALS, weekOf } from './plangen.js';
 import { todayStr } from './util.js';
 
@@ -46,15 +48,39 @@ function render(tab) {
   switch (tab) {
     case 'today': renderToday(view, refresh); break;
     case 'week': renderWeek(view, refresh); break;
+    case 'plan': renderPlan(view); break;
     case 'progress': renderProgress(view); break;
     case 'settings': renderSettings(view, refresh, () => { resetWeekView(); render('today'); }); break;
   }
   window.scrollTo(0, 0);
 }
 
+// Daily quote splash — once per app session (cold launch), tap or timeout to dismiss.
+function showSplash() {
+  try {
+    if (sessionStorage.getItem('stride.splashShown')) return;
+    sessionStorage.setItem('stride.splashShown', '1');
+  } catch { /* private mode: still show, just may repeat */ }
+  const splash = document.getElementById('splash');
+  const q = quoteForDate();
+  document.getElementById('splash-quote').textContent = `“${q.t}”`;
+  document.getElementById('splash-attr').textContent = `— ${q.a}`;
+  splash.hidden = false;
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    splash.classList.add('splash-out');
+    setTimeout(() => { splash.hidden = true; }, 450);
+  };
+  splash.addEventListener('click', close);
+  setTimeout(close, 3500);
+}
+
 tabbar.querySelectorAll('.tab').forEach((b) =>
   b.addEventListener('click', () => render(b.dataset.tab)));
 
+showSplash();
 render('today');
 
 // PWA service worker

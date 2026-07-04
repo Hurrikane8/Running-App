@@ -407,7 +407,8 @@ function buildWeek(profile, weekIdx, weekStart, volKm, phase, totalWeeks, raceDa
 
 export function generatePlan(profile, fromDate = null) {
   const g = GOALS[profile.goal];
-  const start = mondayOf(fromDate || todayStr());
+  const created = fromDate || todayStr();
+  const start = mondayOf(created);
   let totalWeeks;
   if (profile.goal === 'fitness' || !profile.raceDate) {
     totalWeeks = 12;
@@ -424,10 +425,56 @@ export function generatePlan(profile, fromDate = null) {
       : phaseFor(w, totalWeeks, 0, false);
     weeks.push(buildWeek(profile, w, weekStart, vols[w], phase, totalWeeks, profile.raceDate));
   }
+  // The plan starts the day it is generated: days earlier in the calendar
+  // week never existed as training days, so they must not be scheduled (they
+  // would instantly read as "missed").
+  const first = weeks[0];
+  if (first) {
+    const kept = first.workouts.filter((x) => x.date >= created);
+    if (kept.length !== first.workouts.length) {
+      first.workouts = kept;
+      first.targetKm = Math.round(kept.reduce(
+        (s, x) => s + (x.distKm ?? (x.durMin ? x.durMin / 7 : 0)), 0));
+    }
+  }
   return {
-    createdAt: todayStr(), startDate: start, goal: profile.goal,
+    createdAt: created, startDate: start, goal: profile.goal,
     raceDate: profile.raceDate || null, totalWeeks, weeks,
   };
+}
+
+// ---- race-time estimation ----
+
+// Rough fitness-gain heuristic: Daniels suggests reassessing VDOT every 4–6
+// weeks of consistent training (~1 point per block for developing runners,
+// diminishing sharply with experience). Rate is per training week, capped.
+const VDOT_GAIN_RATE = { beginner: 0.22, intermediate: 0.13, advanced: 0.07, elite: 0.035 };
+const VDOT_GAIN_CAP = { beginner: 5, intermediate: 3.5, advanced: 2, elite: 1 };
+
+// Time estimate for any goal distance. Daniels' equations are validated up
+// to the marathon; beyond it, scale the marathon prediction with a fatigue
+// exponent steeper than Riegel's road value (ultra reality: terrain, fueling,
+// hiking) — still a flat-course, best-case style estimate.
+export function estimateRaceTime(vdot, distKm) {
+  if (distKm <= 42.3) return predictRace(vdot, distKm);
+  const marathon = predictRace(vdot, 42.195);
+  return marathon * Math.pow(distKm / 42.195, 1.15);
+}
+
+// Current-fitness estimate + projection at race day assuming the plan is
+// followed (VDOT gain over the remaining training weeks).
+export function projectedRaceTime(profile, plan) {
+  const g = GOALS[profile.goal];
+  if (!g.distKm) return null;
+  const current = estimateRaceTime(profile.vdot, g.distKm);
+  const raceDate = plan?.raceDate || profile.raceDate;
+  if (!raceDate || diffDays(todayStr(), raceDate) < 0) {
+    return { current, projected: null, gain: 0 };
+  }
+  const weeksLeft = Math.max(0, diffDays(todayStr(), raceDate) / 7);
+  const gain = Math.min(weeksLeft * VDOT_GAIN_RATE[profile.experience],
+    VDOT_GAIN_CAP[profile.experience]);
+  return { current, projected: estimateRaceTime(profile.vdot + gain, g.distKm), gain };
 }
 
 // Regenerate future weeks (from the current week) after a profile change,
