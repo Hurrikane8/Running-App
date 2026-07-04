@@ -25,9 +25,15 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
-      # No build step — the repo root is the site
+      # No build step — the repo root is the site.
+      # Artifact name is unique per attempt: a re-run keeps the previous
+      # attempt's artifact attached to the run, and deploy-pages fails with
+      # "Multiple artifacts named github-pages" if two share the default name.
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
+          name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
