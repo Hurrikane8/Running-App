@@ -58,8 +58,8 @@ export function renderToday(container, refresh) {
         ${chipFor(w)}
       </div>
       <div class="today-title">${esc(w.title)}</div>
-      <div class="today-target">${targetLine(w, profile, settings.units)}</div>
-      <div class="structure">${structureRows(w, profile, settings.units)}</div>
+      <div class="today-target">${targetLine(w, profile, settings)}</div>
+      <div class="structure">${structureRows(w, profile, settings)}</div>
       ${w.tip ? `<div class="tip">${esc(w.tip)}</div>` : ''}
       ${profile.injuries.length && ['tempo', 'intervals', 'reps', 'hills'].includes(w.type)
         ? '<div class="tip">Niggle-aware: if anything hurts beyond a 3/10, swap this for the same duration at easy effort on a bike or elliptical.</div>' : ''}

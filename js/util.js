@@ -90,6 +90,30 @@ export function fmtPace(secPerKm, units) {
   return `${mm}:${String(ss).padStart(2, '0')} /${units}`;
 }
 
+// treadmill speed: mph = 3600 / (sec/km · km/mi); 5:00 /km → 7.5 mph
+export function paceToMph(secPerKm) {
+  return 3600 / (secPerKm * KM_PER_MI);
+}
+
+export function fmtSpeedMph(secPerKm) {
+  return `${paceToMph(secPerKm).toFixed(1)} mph`;
+}
+
+// Display-mode-aware pace formatting: outdoor pace in the user's units, or
+// treadmill speed (always mph — treadmill consoles are conventionally mph).
+export function fmtPaceDisplay(secPerKm, settings) {
+  if (settings.paceDisplay === 'treadmill') return fmtSpeedMph(secPerKm);
+  return fmtPace(secPerKm, settings.units);
+}
+
+export function fmtPaceRangeDisplay(loSecPerKm, hiSecPerKm, settings) {
+  if (settings.paceDisplay === 'treadmill') {
+    // lo = slower pace = lower mph, so the range still reads low→high
+    return `${paceToMph(loSecPerKm).toFixed(1)}–${paceToMph(hiSecPerKm).toFixed(1)} mph`;
+  }
+  return fmtPaceRange(loSecPerKm, hiSecPerKm, settings.units);
+}
+
 export function fmtPaceRange(loSecPerKm, hiSecPerKm, units) {
   const one = (spk) => {
     const spu = units === 'mi' ? spk * KM_PER_MI : spk;

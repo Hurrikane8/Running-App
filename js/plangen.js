@@ -64,8 +64,12 @@ function phaseFor(weekIdx, totalWeeks, taperWeeks, ultra) {
   return 'peak';
 }
 
-// Weekly volume series: ≤10% growth (6–8% with injuries), deload every 4th
-// week at ~72%, taper multipliers at the end.
+// Weekly volume series: classic 3:1 step-loading. Full-load weeks grow ≤10%
+// (6–8% with injuries); every 4th week is a planned deload at ~72% of the
+// current full load. The growth chain advances only on full-load weeks, so the
+// week after a deload resumes one growth step (≤10%) above the previous
+// full-load week — the deload itself is unloading, not the progression
+// baseline. Taper multipliers at the end.
 function volumeSeries(profile, totalWeeks, taperWeeks) {
   const idx = EXP_IDX[profile.experience];
   const peakCap = PEAK_KM[profile.goal][idx];
@@ -82,7 +86,7 @@ function volumeSeries(profile, totalWeeks, taperWeeks) {
       continue;
     }
     const isDeload = w % 4 === 3;
-    if (w > 0) chain = Math.min(chain * growth, peakCap);
+    if (w > 0 && !isDeload) chain = Math.min(chain * growth, peakCap);
     lastFull = chain;
     vols.push(isDeload ? chain * 0.72 : chain);
   }

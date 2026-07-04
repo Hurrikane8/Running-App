@@ -4,7 +4,7 @@
 import { loadState, saveState, resetState, exportState, importState } from '../storage.js';
 import { GOALS, replanFrom, pacesForProfile } from '../plangen.js';
 import { vdotFromRace } from '../paces.js';
-import { todayStr, addDays, esc, fmtPaceRange, fmtPace, kmToUnit, unitToKm, fmtDist } from '../util.js';
+import { todayStr, addDays, esc, fmtPaceRangeDisplay, fmtPaceDisplay, kmToUnit, unitToKm, fmtDist } from '../util.js';
 import { openModal, closeModal } from '../wkfmt.js';
 
 const RACE_INPUT_DISTS = [
@@ -43,6 +43,13 @@ export function renderSettings(container, refresh, restartOnboarding) {
         <button data-units="km" class="${units === 'km' ? 'on' : ''}">Kilometres</button>
         <button data-units="mi" class="${units === 'mi' ? 'on' : ''}">Miles</button>
       </div>
+      <h3 style="margin:16px 0 10px">Pace display</h3>
+      <div class="seg" id="set-pacedisplay">
+        <button data-pd="outdoor" class="${settings.paceDisplay !== 'treadmill' ? 'on' : ''}">Outdoor</button>
+        <button data-pd="treadmill" class="${settings.paceDisplay === 'treadmill' ? 'on' : ''}">Treadmill</button>
+      </div>
+      ${settings.paceDisplay === 'treadmill'
+        ? '<p class="hint">Pace targets show as treadmill speed in mph (treadmill consoles are mph), independent of your distance units.</p>' : ''}
     </div>
 
     <div class="card">
@@ -57,9 +64,9 @@ export function renderSettings(container, refresh, restartOnboarding) {
     <div class="card">
       <h3 style="margin-bottom:8px">Fitness &amp; paces</h3>
       <div class="pr-row"><span class="k">Fitness score (VDOT)</span><span class="v">${profile.vdot}</span></div>
-      <div class="pr-row"><span class="k">Easy pace</span><span class="v">${fmtPaceRange(p.easy[0], p.easy[1], units)}</span></div>
-      <div class="pr-row"><span class="k">Threshold</span><span class="v">${fmtPace(p.threshold, units)}</span></div>
-      <div class="pr-row"><span class="k">Interval</span><span class="v">${fmtPace(p.interval, units)}</span></div>
+      <div class="pr-row"><span class="k">Easy pace</span><span class="v">${fmtPaceRangeDisplay(p.easy[0], p.easy[1], settings)}</span></div>
+      <div class="pr-row"><span class="k">Threshold</span><span class="v">${fmtPaceDisplay(p.threshold, settings)}</span></div>
+      <div class="pr-row"><span class="k">Interval</span><span class="v">${fmtPaceDisplay(p.interval, settings)}</span></div>
       <div class="btn-row"><button class="btn" id="edit-fitness">Update fitness (new race / time trial)</button></div>
     </div>
 
@@ -79,6 +86,8 @@ export function renderSettings(container, refresh, restartOnboarding) {
 
   container.querySelectorAll('#set-units button').forEach((b) =>
     b.addEventListener('click', () => { settings.units = b.dataset.units; saveState(); refresh(); }));
+  container.querySelectorAll('#set-pacedisplay button').forEach((b) =>
+    b.addEventListener('click', () => { settings.paceDisplay = b.dataset.pd; saveState(); refresh(); }));
 
   container.querySelector('#edit-goal').addEventListener('click', () => openGoalModal(refresh));
   container.querySelector('#edit-fitness').addEventListener('click', () => openFitnessModal(refresh));

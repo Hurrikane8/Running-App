@@ -65,7 +65,7 @@ export function renderWeek(container, refresh) {
         ${chipFor(w)}
         <div style="min-width:0">
           <div class="w-title">${esc(w.title)}</div>
-          <div class="w-sub">${targetLine(w, profile, settings.units)}</div>
+          <div class="w-sub">${targetLine(w, profile, settings)}</div>
         </div>
       </div>`;
     }
@@ -142,8 +142,8 @@ function openDetail(id, refresh) {
     <button class="modal-close" aria-label="Close">×</button>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">${chipFor(w)}</div>
     <h2>${esc(w.title)}</h2>
-    <p class="sub">${fmtDateShort(w.date)} · ${targetLine(w, profile, settings.units)}</p>
-    <div class="structure">${structureRows(w, profile, settings.units)}</div>
+    <p class="sub">${fmtDateShort(w.date)} · ${targetLine(w, profile, settings)}</p>
+    <div class="structure">${structureRows(w, profile, settings)}</div>
     ${w.tip ? `<div class="tip">${esc(w.tip)}</div>` : ''}
     ${w.status === 'planned'
       ? `<div class="btn-row">

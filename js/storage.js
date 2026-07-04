@@ -1,15 +1,45 @@
-// Single-key localStorage persistence with a version field for future migrations.
+// Single-key localStorage persistence with versioned schema migrations.
+// Any change to the persisted data structure MUST ship a migration below so
+// existing plans and logged workouts survive the update.
 
-const KEY = 'stride.state.v1';
+const KEY = 'stride.state.v1'; // storage key is stable; `version` tracks the schema
+
+export const STATE_VERSION = 2;
 
 const DEFAULT_STATE = {
-  version: 1,
-  settings: { units: 'km' },
+  version: STATE_VERSION,
+  settings: { units: 'km', paceDisplay: 'outdoor' }, // paceDisplay: 'outdoor' | 'treadmill'
   profile: null,      // set by onboarding
   plan: null,         // { createdAt, startDate, goal, raceDate, weeks: [...] }
   extraLogs: [],      // ad-hoc runs logged outside the plan
   ui: { reshuffleDismissed: null },
 };
+
+// Sequential migrations: MIGRATIONS[n] upgrades a state from version n to n+1.
+const MIGRATIONS = {
+  // v1 → v2: settings gains paceDisplay (treadmill pace mode)
+  1: (s) => {
+    s.settings = { units: 'km', ...s.settings };
+    if (!s.settings.paceDisplay) s.settings.paceDisplay = 'outdoor';
+    return s;
+  },
+};
+
+function migrate(s) {
+  if (!s || typeof s !== 'object') return structuredClone(DEFAULT_STATE);
+  if (!s.version) s.version = 1;
+  while (s.version < STATE_VERSION) {
+    const step = MIGRATIONS[s.version];
+    if (!step) break; // unknown gap — keep data as-is rather than destroy it
+    s = step(s);
+    s.version += 1;
+  }
+  // Defensive top-level defaults (never overwrite user data)
+  s.settings = { ...DEFAULT_STATE.settings, ...s.settings };
+  s.ui = { ...DEFAULT_STATE.ui, ...s.ui };
+  s.extraLogs ??= [];
+  return s;
+}
 
 let state = null;
 
@@ -17,7 +47,12 @@ export function loadState() {
   if (state) return state;
   try {
     const raw = localStorage.getItem(KEY);
-    state = raw ? { ...structuredClone(DEFAULT_STATE), ...JSON.parse(raw) } : structuredClone(DEFAULT_STATE);
+    if (raw) {
+      state = migrate(JSON.parse(raw));
+      saveState(); // persist any migration immediately
+    } else {
+      state = structuredClone(DEFAULT_STATE);
+    }
   } catch {
     state = structuredClone(DEFAULT_STATE);
   }
@@ -43,10 +78,10 @@ export function exportState() {
 
 export function importState(json) {
   const parsed = JSON.parse(json); // throws on invalid JSON
-  if (!parsed || typeof parsed !== 'object' || parsed.version !== 1) {
+  if (!parsed || typeof parsed !== 'object' || !parsed.version || parsed.version > STATE_VERSION) {
     throw new Error('Not a valid Stride backup file');
   }
-  state = { ...structuredClone(DEFAULT_STATE), ...parsed };
+  state = migrate(parsed);
   saveState();
   return state;
 }
