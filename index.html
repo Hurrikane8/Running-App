@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Stride — Running Coach</title>
+  <meta name="description" content="Personal adaptive running coach. Your plan, your data, on your device.">
+  <meta name="theme-color" content="#f6f3ec" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#141310" media="(prefers-color-scheme: dark)">
+  <link rel="manifest" href="manifest.webmanifest">
+  <!-- iOS standalone PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Stride">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div id="app">
+    <header id="topbar" hidden>
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 17 L10 10 L14 14 L21 5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">Stride</span>
+      </div>
+      <div id="topbar-meta" class="topbar-meta"></div>
+    </header>
+
+    <main id="view" tabindex="-1"></main>
+
+    <nav id="tabbar" hidden aria-label="Main">
+      <button class="tab" data-tab="today" aria-label="Today">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/></svg>
+        <span>Today</span>
+      </button>
+      <button class="tab" data-tab="week" aria-label="Week">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 10h16M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>Week</span>
+      </button>
+      <button class="tab" data-tab="progress" aria-label="Progress">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19 L4 12 M10 19 L10 7 M16 19 L16 10 M22 19 L22 4" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" transform="translate(-1 0)"/></svg>
+        <span>Progress</span>
+      </button>
+      <button class="tab" data-tab="settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>Settings</span>
+      </button>
+    </nav>
+
+    <div id="modal-root"></div>
+  </div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
