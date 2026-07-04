@@ -63,6 +63,17 @@ Ultrarunning*; Krissy Moehl's plan structures):
 - Longer minimum plan lengths, larger base fraction, less VO2max work (intensity
   is mostly steady-state/tempo and hills), plus fueling- and hiking-practice cues.
 
+### Race-time projection
+The Plan tab shows two estimates: today's fitness (VDOT → Daniels equivalent
+race time) and a race-day projection. The projection adds a conservative
+training-gain heuristic — Daniels recommends reassessing VDOT every 4–6 weeks
+of consistent training, with roughly a point per block for developing runners
+and sharply diminishing returns with experience — implemented as a per-week
+gain rate by experience level, capped. Distances beyond the marathon scale the
+marathon prediction with a fatigue exponent steeper than Riegel's road value
+(1.15), and are labeled as flat-course estimates since terrain dominates ultra
+finish times.
+
 ### Injury accommodations
 If the user flags a current niggle, the generator: caps weekly progression at 6–8%,
 converts one easy day to an optional low-impact cross-training day, and attaches
