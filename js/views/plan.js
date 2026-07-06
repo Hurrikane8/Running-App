@@ -3,6 +3,7 @@
 import { loadState } from '../storage.js';
 import { GOALS, projectedRaceTime, estimateRaceTime } from '../plangen.js';
 import { todayStr, addDays, esc, fmtDist, fmtTime, diffDays, mondayOf } from '../util.js';
+import { TYPE_INFO, typeChip } from '../wkfmt.js';
 
 export function renderPlan(container) {
   const state = loadState();
@@ -16,11 +17,21 @@ export function renderPlan(container) {
   if (g.distKm) {
     const proj = projectedRaceTime(profile, plan);
     if (proj.projected != null) {
+      let goalLine = '';
+      if (profile.goalTimeSec) {
+        const diff = proj.projected - profile.goalTimeSec;
+        goalLine = `<div style="font-size:15px; font-weight:750; margin-top:6px">
+          Goal: ${fmtTime(profile.goalTimeSec)} — ${diff <= 0
+            ? `<span style="color:var(--good)">on track (${fmtTime(-diff)} ahead)</span>`
+            : `<span style="color:var(--accent-text)">${fmtTime(diff)} to close</span>`}
+        </div>`;
+      }
       hero = `
         <div class="card today-hero" style="text-align:center">
           <div class="today-date">Projected ${esc(g.label)} finish</div>
           <div class="today-title" style="font-size:44px; font-variant-numeric:tabular-nums">${fmtTime(proj.projected)}</div>
-          <p class="hint" style="margin-top:2px">
+          ${goalLine}
+          <p class="hint" style="margin-top:4px">
             At today's fitness: ${fmtTime(proj.current)} · projection assumes the plan is
             followed through race day (≈ +${proj.gain.toFixed(1)} VDOT).
             ${g.ultra ? '<br>Ultra estimates assume a flat, runnable course — terrain and vert add time.' : ''}
@@ -74,6 +85,18 @@ export function renderPlan(container) {
     <div class="card">
       <h3 style="margin-bottom:8px">Week by week</h3>
       ${weekRows}
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:4px">Know your sessions</h3>
+      <p class="hint" style="margin-bottom:6px">What each run type is for, and how it should feel.</p>
+      ${TYPE_INFO.map((t) => `
+        <div class="type-guide-row">
+          ${typeChip(t.type)}
+          <div>
+            <div class="tg-what">${t.what}</div>
+            <div class="tg-how">${t.how}</div>
+          </div>
+        </div>`).join('')}
     </div>
   `;
 }

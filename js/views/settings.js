@@ -143,6 +143,7 @@ function openGoalModal(refresh) {
     const goal = goalSel.value;
     const raceDate = goal === 'fitness' ? null : (el.querySelector('#gm-date').value || null);
     if (goal !== 'fitness' && !raceDate) { el.querySelector('#gm-date').focus(); return; }
+    if (goal !== profile.goal) profile.goalTimeSec = null; // stale for a new distance
     profile.goal = goal;
     profile.raceDate = raceDate;
     profile.daysPerWeek = parseInt(el.querySelector('#gm-days').value, 10);
@@ -184,6 +185,7 @@ function openFitnessModal(refresh) {
     if (sec >= 240) {
       profile.refRace = { distKm: d.km, timeSec: sec, label: d.label };
       profile.vdot = Math.round(vdotFromRace(d.km, sec) * 10) / 10;
+      profile.vdotDate = todayStr(); // re-anchor the fitness-progression clock
     }
     state.plan = replanFrom(state.plan, profile, todayStr());
     saveState();
