@@ -13,6 +13,7 @@ export function renderToday(container, refresh) {
   const todays = workoutsOn(plan, today);
   const missed = missedWorkouts(plan, today);
   const g = GOALS[profile.goal];
+  const evidence = { plan, extraLogs: state.extraLogs };
 
   let html = `
     <h1 class="screen-title">Today</h1>
@@ -22,7 +23,7 @@ export function renderToday(container, refresh) {
   // Countdown / goal strip
   if (plan?.raceDate && diffDays(today, plan.raceDate) >= 0) {
     const days = diffDays(today, plan.raceDate);
-    const pred = goalPrediction(profile);
+    const pred = goalPrediction(profile, plan, state.extraLogs);
     html += `<div class="week-summary">
       <div class="stat-tile"><div class="v">${days}</div><div class="k">days to race</div></div>
       ${pred && !g.ultra ? `<div class="stat-tile"><div class="v">${fmtTime(pred)}</div><div class="k">predicted ${esc(g.label)}</div></div>` : ''}
@@ -58,8 +59,8 @@ export function renderToday(container, refresh) {
         ${chipFor(w)}
       </div>
       <div class="today-title">${esc(w.title)}</div>
-      <div class="today-target">${targetLine(w, profile, settings)}</div>
-      <div class="structure">${structureRows(w, profile, settings)}</div>
+      <div class="today-target">${targetLine(w, profile, settings, evidence)}</div>
+      <div class="structure">${structureRows(w, profile, settings, evidence)}</div>
       ${w.tip ? `<div class="tip">${esc(w.tip)}</div>` : ''}
       ${profile.injuries.length && ['tempo', 'intervals', 'reps', 'hills'].includes(w.type)
         ? '<div class="tip">Niggle-aware: if anything hurts beyond a 3/10, swap this for the same duration at easy effort on a bike or elliptical.</div>' : ''}

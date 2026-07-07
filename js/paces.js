@@ -30,15 +30,29 @@ function paceAtFraction(vdot, frac) {
   return 60000 / v; // sec/km
 }
 
+// Shared so the "measured fitness" reverse-calculation (plangen.js) uses the
+// exact same fractions as the forward pace calculation — one source of truth.
+export const INTENSITY_FRACTIONS = {
+  easyLo: 0.62, easyHi: 0.72, marathon: 0.80, threshold: 0.87, interval: 0.985, rep: 1.07,
+};
+
 // Training paces (sec/km) at Daniels' intensity fractions.
 export function trainingPaces(vdot) {
   return {
-    easy: [paceAtFraction(vdot, 0.62), paceAtFraction(vdot, 0.72)], // range, slow→fast bound order fixed below
-    marathon: paceAtFraction(vdot, 0.80),
-    threshold: paceAtFraction(vdot, 0.87),
-    interval: paceAtFraction(vdot, 0.985),
-    rep: paceAtFraction(vdot, 1.07),
+    easy: [paceAtFraction(vdot, INTENSITY_FRACTIONS.easyLo), paceAtFraction(vdot, INTENSITY_FRACTIONS.easyHi)],
+    marathon: paceAtFraction(vdot, INTENSITY_FRACTIONS.marathon),
+    threshold: paceAtFraction(vdot, INTENSITY_FRACTIONS.threshold),
+    interval: paceAtFraction(vdot, INTENSITY_FRACTIONS.interval),
+    rep: paceAtFraction(vdot, INTENSITY_FRACTIONS.rep),
   };
+}
+
+// Implied VDOT from an actual logged effort at a known, fixed intensity
+// fraction — the inverse of paceAtFraction. This is what lets real workout
+// results (not just formal race times) feed back into the fitness estimate.
+export function impliedVdotFromEffort(distKm, durSec, fraction) {
+  const v = (distKm * 1000) / (durSec / 60); // m/min
+  return vo2AtVelocity(v) / fraction;
 }
 
 // Predict race time (sec) for distKm at a given VDOT — bisection on duration.

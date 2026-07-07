@@ -1,7 +1,7 @@
 // Plan tab: projected race time + full week-by-week plan breakdown.
 
 import { loadState } from '../storage.js';
-import { GOALS, projectedRaceTime, estimateRaceTime } from '../plangen.js';
+import { GOALS, projectedRaceTime, estimateRaceTime, vdotForDate, vdotBreakdown } from '../plangen.js';
 import { todayStr, addDays, esc, fmtDist, fmtTime, diffDays, mondayOf } from '../util.js';
 import { TYPE_INFO, typeChip } from '../wkfmt.js';
 
@@ -13,9 +13,14 @@ export function renderPlan(container) {
   const today = todayStr();
   const curMonday = mondayOf(today);
 
+  const fb = vdotBreakdown(profile, today, plan, state.extraLogs);
+  const evidenceLine = fb.nPoints > 0
+    ? `<p class="hint" style="margin-top:6px">Blends your entered fitness with ${fb.nPoints} recent logged effort${fb.nPoints === 1 ? '' : 's'}.</p>`
+    : '';
+
   let hero = '';
   if (g.distKm) {
-    const proj = projectedRaceTime(profile, plan);
+    const proj = projectedRaceTime(profile, plan, state.extraLogs);
     if (proj.projected != null) {
       let goalLine = '';
       if (profile.goalTimeSec) {
@@ -36,6 +41,7 @@ export function renderPlan(container) {
             followed through race day (≈ +${proj.gain.toFixed(1)} VDOT).
             ${g.ultra ? '<br>Ultra estimates assume a flat, runnable course — terrain and vert add time.' : ''}
           </p>
+          ${evidenceLine}
         </div>`;
     } else {
       hero = `
@@ -43,14 +49,16 @@ export function renderPlan(container) {
           <div class="today-date">Estimated ${esc(g.label)} (today's fitness)</div>
           <div class="today-title" style="font-size:44px; font-variant-numeric:tabular-nums">${fmtTime(proj.current)}</div>
           <p class="hint" style="margin-top:2px">Race date has passed — set a new goal in Settings for a fresh projection.</p>
+          ${evidenceLine}
         </div>`;
     }
   } else {
     hero = `
       <div class="card today-hero" style="text-align:center">
         <div class="today-date">Estimated 5K at today's fitness</div>
-        <div class="today-title" style="font-size:44px; font-variant-numeric:tabular-nums">${fmtTime(estimateRaceTime(profile.vdot, 5))}</div>
+        <div class="today-title" style="font-size:44px; font-variant-numeric:tabular-nums">${fmtTime(estimateRaceTime(vdotForDate(profile, today, plan, state.extraLogs), 5))}</div>
         <p class="hint" style="margin-top:2px">No race on the calendar — set one in Settings to get a race-day projection.</p>
+        ${evidenceLine}
       </div>`;
   }
 

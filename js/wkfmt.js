@@ -2,7 +2,7 @@
 
 import { loadState, saveState } from './storage.js';
 import { pacesForDate } from './plangen.js';
-import { fmtDist, fmtPaceDisplay, fmtPaceRangeDisplay, fmtTime, esc, kmToUnit, unitToKm, todayStr } from './util.js';
+import { fmtDist, fmtPaceDisplay, fmtTime, esc, kmToUnit, unitToKm, todayStr } from './util.js';
 
 export const TYPE_LABEL = {
   easy: 'Easy', recovery: 'Recovery', long: 'Long run', tempo: 'Threshold',
@@ -39,21 +39,25 @@ export const TYPE_INFO = [
   { type: 'race', what: 'The day it all pays off.', how: 'Even or slightly negative splits. Trust the taper, execute your fueling plan.' },
 ];
 
-// "8 km · easy pace 6:30–7:10 /km" (or "easy 5.2–6.0 mph" in treadmill mode)
-export function targetLine(w, profile, settings) {
+// evidence = { plan, extraLogs } — logged workouts that let pace targets
+// reflect actual performance, not just the calendar-based assumption.
+
+// "8 km · easy pace 6:42 /km" (or "easy 5.6 mph" in treadmill mode)
+export function targetLine(w, profile, settings, evidence = {}) {
   const parts = [];
   if (w.distKm != null) parts.push(fmtDist(w.distKm, settings.units));
   if (w.durMin != null) parts.push(w.durMin >= 60 ? `${Math.floor(w.durMin / 60)} h ${w.durMin % 60 ? (w.durMin % 60) + ' min' : ''}`.trim() : `${w.durMin} min`);
-  const pace = paceTarget(w, profile, settings);
+  const pace = paceTarget(w, profile, settings, evidence);
   if (pace) parts.push(pace);
   return parts.join(' · ');
 }
 
-export function paceTarget(w, profile, settings) {
+export function paceTarget(w, profile, settings, evidence = {}) {
   if (!w.paceKey || !profile) return w.type === 'long' && !w.paceKey ? 'easy effort (RPE 3–4)' : null;
-  const p = pacesForDate(profile, w.date); // paces progress with projected fitness
+  const p = pacesForDate(profile, w.date, evidence.plan, evidence.extraLogs); // paces reflect logged performance + projected fitness
+  const easyPace = (p.easy[0] + p.easy[1]) / 2; // a single target, not the full prescribed band
   switch (w.paceKey) {
-    case 'easy': return `easy ${fmtPaceRangeDisplay(p.easy[0], p.easy[1], settings)}`;
+    case 'easy': return `easy ${fmtPaceDisplay(easyPace, settings)}`;
     case 'marathon': return `goal pace ${fmtPaceDisplay(p.marathon, settings)}`;
     case 'threshold': return `threshold ${fmtPaceDisplay(p.threshold, settings)}`;
     case 'interval': return `interval ${fmtPaceDisplay(p.interval, settings)}`;
@@ -62,20 +66,21 @@ export function paceTarget(w, profile, settings) {
   }
 }
 
-export function structureRows(w, profile, settings) {
+export function structureRows(w, profile, settings, evidence = {}) {
   const rows = [];
   if (w.structure.warmup) rows.push(['Warm-up', w.structure.warmup]);
-  rows.push(['Main set', decoratePaces(w.structure.main, w, profile, settings)]);
+  rows.push(['Main set', decoratePaces(w.structure.main, w, profile, settings, evidence)]);
   if (w.structure.cooldown) rows.push(['Cool-down', w.structure.cooldown]);
   return rows.map(([k, v]) =>
     `<div class="structure-row"><div class="structure-label">${k}</div><div class="structure-body">${v}</div></div>`).join('');
 }
 
-function decoratePaces(text, w, profile, settings) {
+function decoratePaces(text, w, profile, settings, evidence = {}) {
   if (!profile) return esc(text);
-  const p = pacesForDate(profile, w.date); // paces progress with projected fitness
+  const p = pacesForDate(profile, w.date, evidence.plan, evidence.extraLogs);
+  const easyPace = (p.easy[0] + p.easy[1]) / 2;
   const map = {
-    'easy pace': `easy pace <span class="pace-pill">${fmtPaceRangeDisplay(p.easy[0], p.easy[1], settings)}</span>`,
+    'easy pace': `easy pace <span class="pace-pill">${fmtPaceDisplay(easyPace, settings)}</span>`,
     'threshold pace': `threshold pace <span class="pace-pill">${fmtPaceDisplay(p.threshold, settings)}</span>`,
     'interval pace': `interval pace <span class="pace-pill">${fmtPaceDisplay(p.interval, settings)}</span>`,
     'repetition pace': `repetition pace <span class="pace-pill">${fmtPaceDisplay(p.rep, settings)}</span>`,

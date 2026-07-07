@@ -2,9 +2,9 @@
 // current week), plan overview, backup/restore, reset.
 
 import { loadState, saveState, resetState, exportState, importState } from '../storage.js';
-import { GOALS, replanFrom, pacesForProfile } from '../plangen.js';
+import { GOALS, replanFrom, pacesForProfile, vdotBreakdown } from '../plangen.js';
 import { vdotFromRace } from '../paces.js';
-import { todayStr, addDays, esc, fmtPaceRangeDisplay, fmtPaceDisplay, kmToUnit, unitToKm } from '../util.js';
+import { todayStr, addDays, esc, fmtPaceDisplay, kmToUnit, unitToKm } from '../util.js';
 import { openModal, closeModal } from '../wkfmt.js';
 
 const RACE_INPUT_DISTS = [
@@ -19,7 +19,9 @@ export function renderSettings(container, refresh, restartOnboarding) {
   const state = loadState();
   const { profile, plan, settings } = state;
   const units = settings.units;
-  const p = pacesForProfile(profile);
+  const p = pacesForProfile(profile, plan, state.extraLogs);
+  const fb = vdotBreakdown(profile, todayStr(), plan, state.extraLogs);
+  const easyPace = (p.easy[0] + p.easy[1]) / 2;
   const g = GOALS[profile.goal];
 
   container.innerHTML = `
@@ -52,10 +54,13 @@ export function renderSettings(container, refresh, restartOnboarding) {
 
     <div class="card">
       <h3 style="margin-bottom:8px">Fitness &amp; paces</h3>
-      <div class="pr-row"><span class="k">Fitness score (VDOT)</span><span class="v">${profile.vdot}</span></div>
-      <div class="pr-row"><span class="k">Easy pace</span><span class="v">${fmtPaceRangeDisplay(p.easy[0], p.easy[1], settings)}</span></div>
+      <div class="pr-row"><span class="k">Fitness score (VDOT)</span><span class="v">${fb.blended.toFixed(1)}</span></div>
+      <div class="pr-row"><span class="k">Easy pace</span><span class="v">${fmtPaceDisplay(easyPace, settings)}</span></div>
       <div class="pr-row"><span class="k">Threshold</span><span class="v">${fmtPaceDisplay(p.threshold, settings)}</span></div>
       <div class="pr-row"><span class="k">Interval</span><span class="v">${fmtPaceDisplay(p.interval, settings)}</span></div>
+      ${fb.nPoints > 0
+        ? `<p class="hint">Sharpened using ${fb.nPoints} recent logged effort${fb.nPoints === 1 ? '' : 's'} (in addition to your entered baseline of ${profile.vdot}).</p>`
+        : '<p class="hint">Log a few tempo, interval, or race efforts and paces will sharpen to match how you actually run.</p>'}
       <div class="btn-row"><button class="btn" id="edit-fitness">Update fitness (new race / time trial)</button></div>
     </div>
 

@@ -88,11 +88,41 @@ weeks. Long-run length progresses continuously across the plan rather than
 stepping at phase boundaries.
 
 ### Progressive pace targets
-Pace targets are derived from the *projected* VDOT on the workout's date —
-the entered fitness plus the same capped experience-scaled gain rate used by
-the race-day projection, anchored at the last fitness test (`vdotDate`).
-Week 1 and week 16 of a plan therefore prescribe different paces, and paces
-re-anchor whenever the user logs a new race/time-trial result in Settings.
+Pace targets are derived from the *effective* VDOT on the workout's date,
+which blends two sources rather than trusting either alone:
+
+- **Baseline projection** — entered fitness plus the same capped
+  experience-scaled gain rate used by the race-day projection, anchored at
+  the last fitness test (`vdotDate`). This is what moves paces forward even
+  with no new data (week 1 vs. week 16 of a plan differ).
+- **Measured evidence** — VDOT read back out of actually logged quality
+  workouts. A workout's *target* pace is normally derived forward from VDOT
+  at a fixed intensity fraction (e.g. threshold ≈ 87% VDOT); this runs that
+  relationship in reverse: given the pace a logged tempo/interval/rep/
+  goal-pace session was actually run at, solve for the VDOT that would have
+  produced it. Races and near-maximal ad-hoc efforts (RPE ≥ 9) use the more
+  precise duration-based Daniels curve instead of a fixed fraction. Easy,
+  long, recovery, and cross-training sessions are deliberately run below
+  capacity and are excluded — their pace says nothing about fitness.
+  Evidence is recency-weighted (21-day half-life, so a hard effort from
+  today counts more than one from six weeks ago) and requires the effort be
+  substantial (≥1.5 km, ≥4 min) to filter out noise.
+
+The two are blended with a trust weight that grows with how much evidence
+exists (0.25 for a single data point, up to 0.85 with four or more recent
+efforts) — so one unusually fast or slow session nudges the estimate without
+fully overriding it, and someone who has never logged a quality session
+still gets sensible, calendar-based progression. This means a runner who is
+genuinely fitter than their entered weekly mileage suggests — i.e. actually
+hitting or beating quality-session targets — gets faster future pace
+prescriptions, not just ones based on time elapsed. Settings shows how many
+logged efforts are currently informing the estimate. Logging a new race/
+time-trial in Settings re-anchors the baseline term (`vdotDate`).
+
+Displayed paces are single numbers, not ranges: Daniels prescribes easy
+running as a 59–74% VDOT band, but the app shows the midpoint as one target
+pace for at-a-glance clarity — the full band is still used internally to
+compute that midpoint.
 
 ### Reverse-engineered plans
 The onboarding "I have a goal time" path inverts the projection: it solves
