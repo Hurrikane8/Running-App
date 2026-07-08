@@ -4,7 +4,7 @@
 
 const KEY = 'stride.state.v1'; // storage key is stable; `version` tracks the schema
 
-export const STATE_VERSION = 3;
+export const STATE_VERSION = 4;
 
 const DEFAULT_STATE = {
   version: STATE_VERSION,
@@ -38,6 +38,17 @@ const MIGRATIONS = {
             (sum, x) => sum + (x.distKm ?? (x.durMin ? x.durMin / 7 : 0)), 0));
         }
       }
+    }
+    return s;
+  },
+  // v3 → v4: profile gains vdotDate (anchor for progressive pace targets)
+  // and optional goalTimeSec (reverse-engineered plans)
+  3: (s) => {
+    if (s.profile) {
+      if (!s.profile.vdotDate) {
+        s.profile.vdotDate = s.plan?.createdAt || new Date().toISOString().slice(0, 10);
+      }
+      s.profile.goalTimeSec ??= null;
     }
     return s;
   },

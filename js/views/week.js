@@ -13,6 +13,7 @@ export function renderWeek(container, refresh) {
   const state = loadState();
   const { plan, profile, settings } = state;
   const today = todayStr();
+  const evidence = { plan, extraLogs: state.extraLogs };
   if (!shownMonday) shownMonday = mondayOf(today);
 
   const week = plan.weeks.find((w) => w.start === shownMonday) || null;
@@ -27,7 +28,7 @@ export function renderWeek(container, refresh) {
       <button class="btn" id="wk-prev" aria-label="Previous week">‹</button>
       <div class="label">
         <b>${week ? `Week ${weekNo} of ${plan.weeks.length}` : 'Outside plan'}</b>
-        <span>${fmtDateShort(shownMonday)} – ${fmtDateShort(addDays(shownMonday, 6))}${week ? ` · <span class="phase-chip">${week.deload ? 'recovery' : week.phase}</span>` : ''}</span>
+        <span>${fmtDateShort(shownMonday)} to ${fmtDateShort(addDays(shownMonday, 6))}${week ? ` · <span class="phase-chip">${week.deload ? 'recovery' : week.phase}</span>` : ''}</span>
       </div>
       <button class="btn" id="wk-next" aria-label="Next week">›</button>
     </div>
@@ -44,7 +45,7 @@ export function renderWeek(container, refresh) {
   if (movingId) {
     const mv = findWorkout(plan, movingId);
     html += `<div class="move-banner">
-      <span>Moving “${esc(mv?.workout.title || '')}” — tap a day</span>
+      <span>Moving “${esc(mv?.workout.title || '')}”: tap a day</span>
       <button id="cancel-move">Cancel</button>
     </div>`;
   }
@@ -58,14 +59,14 @@ export function renderWeek(container, refresh) {
       <div class="day-col"><b>${DAY_ABBR[d]}</b><span>${dnum}</span></div>
       <div class="day-main">`;
     if (!dayW.length) {
-      html += `<div class="rest">${week ? 'Rest' : '—'}</div>`;
+      html += `<div class="rest">${week ? 'Rest' : '-'}</div>`;
     }
     for (const w of dayW) {
       html += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:2px 0" data-wid="${w.id}">
         ${chipFor(w)}
         <div style="min-width:0">
           <div class="w-title">${esc(w.title)}</div>
-          <div class="w-sub">${targetLine(w, profile, settings)}</div>
+          <div class="w-sub">${targetLine(w, profile, settings, evidence)}</div>
         </div>
       </div>`;
     }
@@ -138,12 +139,13 @@ function openDetail(id, refresh) {
   if (!found) return;
   const w = found.workout;
   const { profile, settings } = state;
+  const evidence = { plan: state.plan, extraLogs: state.extraLogs };
   const el = openModal(`
     <button class="modal-close" aria-label="Close">×</button>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">${chipFor(w)}</div>
     <h2>${esc(w.title)}</h2>
-    <p class="sub">${fmtDateShort(w.date)} · ${targetLine(w, profile, settings)}</p>
-    <div class="structure">${structureRows(w, profile, settings)}</div>
+    <p class="sub">${fmtDateShort(w.date)} · ${targetLine(w, profile, settings, evidence)}</p>
+    <div class="structure">${structureRows(w, profile, settings, evidence)}</div>
     ${w.tip ? `<div class="tip">${esc(w.tip)}</div>` : ''}
     ${w.status === 'planned'
       ? `<div class="btn-row">

@@ -1,8 +1,9 @@
 // Plan tab: projected race time + full week-by-week plan breakdown.
 
 import { loadState } from '../storage.js';
-import { GOALS, projectedRaceTime, estimateRaceTime } from '../plangen.js';
+import { GOALS, projectedRaceTime, estimateRaceTime, vdotForDate, vdotBreakdown } from '../plangen.js';
 import { todayStr, addDays, esc, fmtDist, fmtTime, diffDays, mondayOf } from '../util.js';
+import { TYPE_INFO, typeChip } from '../wkfmt.js';
 
 export function renderPlan(container) {
   const state = loadState();
@@ -12,34 +13,52 @@ export function renderPlan(container) {
   const today = todayStr();
   const curMonday = mondayOf(today);
 
+  const fb = vdotBreakdown(profile, today, plan, state.extraLogs);
+  const evidenceLine = fb.nPoints > 0
+    ? `<p class="hint" style="margin-top:6px">Blends your entered fitness with ${fb.nPoints} recent logged effort${fb.nPoints === 1 ? '' : 's'}.</p>`
+    : '';
+
   let hero = '';
   if (g.distKm) {
-    const proj = projectedRaceTime(profile, plan);
+    const proj = projectedRaceTime(profile, plan, state.extraLogs);
     if (proj.projected != null) {
+      let goalLine = '';
+      if (profile.goalTimeSec) {
+        const diff = proj.projected - profile.goalTimeSec;
+        goalLine = `<div style="font-size:15px; font-weight:750; margin-top:6px">
+          Goal: ${fmtTime(profile.goalTimeSec)} ${diff <= 0
+            ? `<span style="color:var(--good)">on track (${fmtTime(-diff)} ahead)</span>`
+            : `<span style="color:var(--accent-text)">${fmtTime(diff)} to close</span>`}
+        </div>`;
+      }
       hero = `
         <div class="card today-hero" style="text-align:center">
           <div class="today-date">Projected ${esc(g.label)} finish</div>
           <div class="today-title" style="font-size:44px; font-variant-numeric:tabular-nums">${fmtTime(proj.projected)}</div>
-          <p class="hint" style="margin-top:2px">
+          ${goalLine}
+          <p class="hint" style="margin-top:4px">
             At today's fitness: ${fmtTime(proj.current)} · projection assumes the plan is
             followed through race day (≈ +${proj.gain.toFixed(1)} VDOT).
-            ${g.ultra ? '<br>Ultra estimates assume a flat, runnable course — terrain and vert add time.' : ''}
+            ${g.ultra ? '<br>Ultra estimates assume a flat, runnable course. Terrain and vert add time.' : ''}
           </p>
+          ${evidenceLine}
         </div>`;
     } else {
       hero = `
         <div class="card today-hero" style="text-align:center">
           <div class="today-date">Estimated ${esc(g.label)} (today's fitness)</div>
           <div class="today-title" style="font-size:44px; font-variant-numeric:tabular-nums">${fmtTime(proj.current)}</div>
-          <p class="hint" style="margin-top:2px">Race date has passed — set a new goal in Settings for a fresh projection.</p>
+          <p class="hint" style="margin-top:2px">Race date has passed. Set a new goal in Settings for a fresh projection.</p>
+          ${evidenceLine}
         </div>`;
     }
   } else {
     hero = `
       <div class="card today-hero" style="text-align:center">
         <div class="today-date">Estimated 5K at today's fitness</div>
-        <div class="today-title" style="font-size:44px; font-variant-numeric:tabular-nums">${fmtTime(estimateRaceTime(profile.vdot, 5))}</div>
-        <p class="hint" style="margin-top:2px">No race on the calendar — set one in Settings to get a race-day projection.</p>
+        <div class="today-title" style="font-size:44px; font-variant-numeric:tabular-nums">${fmtTime(estimateRaceTime(vdotForDate(profile, today, plan, state.extraLogs), 5))}</div>
+        <p class="hint" style="margin-top:2px">No race on the calendar. Set one in Settings to get a race-day projection.</p>
+        ${evidenceLine}
       </div>`;
   }
 
@@ -51,7 +70,7 @@ export function renderPlan(container) {
       ${daysToRace != null && daysToRace >= 0
         ? `<div class="stat-tile"><div class="v">${daysToRace}</div><div class="k">days to race</div></div>`
         : `<div class="stat-tile"><div class="v">${plan.weeks.length}</div><div class="k">weeks total</div></div>`}
-      <div class="stat-tile"><div class="v">${curWeek ? `${curWeek.idx + 1}/${plan.weeks.length}` : '—'}</div><div class="k">current week</div></div>
+      <div class="stat-tile"><div class="v">${curWeek ? `${curWeek.idx + 1}/${plan.weeks.length}` : '-'}</div><div class="k">current week</div></div>
       <div class="stat-tile"><div class="v">${fmtDist(peakKm, units, 0)}</div><div class="k">peak week</div></div>
     </div>`;
 
@@ -74,6 +93,18 @@ export function renderPlan(container) {
     <div class="card">
       <h3 style="margin-bottom:8px">Week by week</h3>
       ${weekRows}
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:4px">Know your sessions</h3>
+      <p class="hint" style="margin-bottom:6px">What each run type is for, and how it should feel.</p>
+      ${TYPE_INFO.map((t) => `
+        <div class="type-guide-row">
+          ${typeChip(t.type)}
+          <div>
+            <div class="tg-what">${t.what}</div>
+            <div class="tg-how">${t.how}</div>
+          </div>
+        </div>`).join('')}
     </div>
   `;
 }

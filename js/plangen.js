@@ -3,7 +3,7 @@
 // ultra adaptations).
 
 import { addDays, mondayOf, todayStr, diffDays, roundHalf, clamp, uid, dayIndex } from './util.js';
-import { trainingPaces, predictRace } from './paces.js';
+import { trainingPaces, predictRace, vdotFromRace, INTENSITY_FRACTIONS, impliedVdotFromEffort } from './paces.js';
 
 export const GOALS = {
   '5k':      { label: '5K',           distKm: 5,      minWeeks: 6,  taper: 1, ultra: false },
@@ -72,7 +72,16 @@ function phaseFor(weekIdx, totalWeeks, taperWeeks, ultra) {
 // baseline. Taper multipliers at the end.
 function volumeSeries(profile, totalWeeks, taperWeeks) {
   const idx = EXP_IDX[profile.experience];
-  const peakCap = PEAK_KM[profile.goal][idx];
+  // Weekly volume is capped by what the schedule can actually absorb: the
+  // long run at its cap plus each remaining day at an easy run that stays
+  // shorter than the long run. Without this, short-race plans with high
+  // entered mileage dump leftover volume into oversized "easy" runs.
+  let peakCap = PEAK_KM[profile.goal][idx];
+  if (!GOALS[profile.goal].ultra) {
+    const longCap = LONG_CAP_KM[profile.goal][idx];
+    const easyCap = Math.min(16, longCap * 0.85);
+    peakCap = Math.min(peakCap, Math.round(longCap + (profile.daysPerWeek - 1) * easyCap));
+  }
   const growth = profile.injuries.length ? 1.06 : 1.08;
   const start = clamp(profile.weeklyKm || 15, 8, peakCap);
   const taperMult = { 1: [0.55], 2: [0.7, 0.45], 3: [0.72, 0.55, 0.38] }[taperWeeks] || [];
@@ -103,30 +112,30 @@ function fmtMin(min) {
 
 const TIPS = {
   easy: [
-    'Easy means genuinely easy — you should be able to hold a conversation the whole way.',
+    'Easy means genuinely easy. You should be able to hold a conversation the whole way.',
     'If your watch pace looks slow today, good. Easy runs build the engine; save the effort for quality days.',
-    'Relax your shoulders and shorten your stride slightly — smooth beats fast on easy days.',
+    'Relax your shoulders and shorten your stride slightly. Smooth beats fast on easy days.',
   ],
   recovery: [
     'This run is about blood flow, not fitness. Slower than feels necessary is exactly right.',
     'Keep it short and gentle. If your legs feel heavy, walking breaks are fine.',
   ],
   long: [
-    'Start slower than feels natural — the goal is finishing steady, not starting fast.',
-    'Practice fueling: take on carbs every 30–40 minutes on runs over 90 minutes.',
+    'Start slower than feels natural. The goal is finishing steady, not starting fast.',
+    'Practice fueling: take on carbs every 30-40 minutes on runs over 90 minutes.',
     'Break the distance into thirds mentally: settle, cruise, then hold form when tired.',
   ],
   ultralong: [
-    'Time on feet is the goal, not pace. Hike the hills — it is free speed later.',
+    'Time on feet is the goal, not pace. Hike the hills. It is free speed later.',
     'Treat this as a fueling rehearsal: eat early, eat often, and note what sits well.',
     'Run the flats and downhills relaxed; power-hike anything steep. That is race craft.',
   ],
   tempo: [
-    'Threshold effort is "comfortably hard" — you could speak a sentence, not a paragraph.',
+    'Threshold effort is "comfortably hard": you could speak a sentence, not a paragraph.',
     'Do not race the tempo. The last rep should feel like you could do one more.',
   ],
   intervals: [
-    'Run the first rep as if it were the fifth — even pacing wins interval sessions.',
+    'Run the first rep as if it were the fifth. Even pacing wins interval sessions.',
     'Full recovery is part of the workout. Jog it out and let your breathing settle.',
   ],
   reps: [
@@ -136,10 +145,10 @@ const TIPS = {
     'Goal-pace running teaches rhythm. Lock into the pace and let it feel automatic.',
   ],
   strides: [
-    'Strides are 20–30 s of fast, relaxed running — build up, float, ease off. Not sprints.',
+    'Strides are 20-30 s of fast, relaxed running: build up, float, ease off. Not sprints.',
   ],
   xtrain: [
-    'Bike, swim, elliptical or brisk uphill walk — aerobic effort without the impact.',
+    'Bike, swim, elliptical or brisk uphill walk: aerobic effort without the impact.',
   ],
   race: [
     'Trust the training. Start conservatively, execute your fueling plan, and finish strong.',
@@ -199,7 +208,7 @@ function intervalRun(date, km, weekIdx) {
   const reps = clamp(Math.round(km * 0.55 / 1), 4, 6);
   return wk(date, 'intervals', 'VO2max intervals', km, null, {
     warmup: '2 km easy + 4 strides',
-    main: `${reps} × 3 min at interval pace, 2–3 min jog recovery`,
+    main: `${reps} × 3 min at interval pace, 2-3 min jog recovery`,
     cooldown: '1.5 km easy jog',
   }, 'interval', tip('intervals', weekIdx));
 }
@@ -245,7 +254,7 @@ function ultraLongRun(date, min, weekIdx, back2back) {
   const title = back2back ? 'Back-to-back long run' : 'Long run (time on feet)';
   return wk(date, 'long', title, null, min, {
     warmup: null,
-    main: `${fmtMin(min)} on feet at easy effort (RPE 3–4). Power-hike climbs, run the rest. Practice race fueling.`,
+    main: `${fmtMin(min)} on feet at easy effort (RPE 3-4). Power-hike climbs, run the rest. Practice race fueling.`,
     cooldown: null,
   }, null, tip('ultralong', weekIdx));
 }
@@ -260,8 +269,8 @@ function xtrainDay(date, min, weekIdx) {
 
 function raceDayWorkout(date, goal) {
   const g = GOALS[goal];
-  return wk(date, 'race', `Race day — ${g.label}`, g.distKm, null, {
-    warmup: g.ultra ? 'Easy 5–10 min walk/jog, well before the start' : '10–15 min easy jog + 4 strides',
+  return wk(date, 'race', `Race day: ${g.label}`, g.distKm, null, {
+    warmup: g.ultra ? 'Easy 5-10 min walk/jog, well before the start' : '10-15 min easy jog + 4 strides',
     main: g.ultra
       ? 'Start easier than feels right, hike climbs early, fuel from the first hour.'
       : 'Even or slightly negative splits at goal pace.',
@@ -293,7 +302,9 @@ function qualityTypesFor(goal, phase, experience, maxQuality) {
   return list.slice(0, maxQuality);
 }
 
-function buildWeek(profile, weekIdx, weekStart, volKm, phase, totalWeeks, raceDate) {
+// progFrac: 0→1 across the pre-taper weeks — long runs build smoothly week
+// by week rather than stepping at phase boundaries.
+function buildWeek(profile, weekIdx, weekStart, volKm, phase, totalWeeks, raceDate, progFrac) {
   const g = GOALS[profile.goal];
   const idx = EXP_IDX[profile.experience];
   const days = DAY_TEMPLATES[profile.daysPerWeek].slice();
@@ -307,17 +318,20 @@ function buildWeek(profile, weekIdx, weekStart, volKm, phase, totalWeeks, raceDa
   if (isDeload) maxQ = Math.min(maxQ, 1);
   const qTypes = qualityTypesFor(profile.goal, phase, profile.experience, maxQ);
 
-  // Long run sizing
+  // Long run sizing — continuous progression toward the cap, dip in taper
   const ultra = g.ultra;
   let longKm = null, longMin = null, b2bMin = null;
-  const phaseProg = { base: 0.7, build: 0.9, peak: 1.0, taper: 0.55 }[phase];
+  const phaseProg = phase === 'taper' ? 0.55 : 0.65 + 0.35 * clamp(progFrac ?? 1, 0, 1);
   if (ultra) {
     const peakMin = ULTRA_LONG_MIN[profile.goal][idx];
     longMin = Math.round(peakMin * phaseProg * (isDeload ? 0.7 : 1) / 10) * 10;
     longMin = clamp(longMin, 80, peakMin);
-    // Back-to-back second run in build/peak (not deload/taper)
+    // Back-to-back second run in build/peak (not deload/taper), ramping
+    // from ~35% of the long run when introduced to ~60% at peak so the
+    // combined weekend load steps up gradually.
     if ((phase === 'build' || phase === 'peak') && !isDeload && profile.daysPerWeek >= 4) {
-      b2bMin = Math.round(longMin * 0.55 / 10) * 10;
+      const ramp = 0.35 + 0.25 * clamp(progFrac ?? 1, 0, 1);
+      b2bMin = Math.round(longMin * ramp / 10) * 10;
     }
   } else {
     const cap = LONG_CAP_KM[profile.goal][idx];
@@ -326,8 +340,14 @@ function buildWeek(profile, weekIdx, weekStart, volKm, phase, totalWeeks, raceDa
     longKm = Math.max(longKm, Math.min(volKm * 0.28, cap));
   }
 
-  // Race week: place the race, taper everything else around it.
+  // Race week: place the race, taper everything else around it. The race
+  // day itself is always scheduled, even when it isn't a usual training day.
   const raceThisWeek = raceDate && mondayOf(raceDate) === weekStart;
+  if (raceThisWeek) {
+    const raceDow = dayIndex(raceDate);
+    if (!days.includes(raceDow)) days.push(raceDow);
+    days.sort((a, b) => a - b);
+  }
 
   // Assign days: Sat(5)=long, Sun(6)=b2b/recovery, quality on first non-adjacent days.
   const longDay = days.includes(5) ? 5 : days[days.length - 1];
@@ -342,21 +362,40 @@ function buildWeek(profile, weekIdx, weekStart, volKm, phase, totalWeeks, raceDa
   const easyDays = days.filter((d) => d !== longDay && !qualityDays.slice(0, qTypes.length).includes(d));
 
   // Estimate quality session distance: ~15% of week each, clamped
-  const qKm = clamp(roundHalf(volKm * 0.16), 5, 14);
+  const qKm = clamp(roundHalf(volKm * 0.16), 4, 14);
+  // Long run stays the longest session of the week, even on tiny deload
+  // weeks where the quality-session floor would otherwise overtake it.
+  if (!ultra && qTypes.length) {
+    longKm = Math.max(longKm, Math.min(qKm + 0.5, LONG_CAP_KM[profile.goal][idx]));
+  }
   const longEquivKm = ultra ? (longMin != null ? longMin / 7 : 0) : longKm; // ~7 min/km easy-effort estimate
   const b2bEquivKm = b2bMin ? b2bMin / 7 : 0;
   let remaining = volKm - longEquivKm - b2bEquivKm - qTypes.length * qKm;
   const nEasy = easyDays.length - (b2bMin && easyDays.includes(6) ? 1 : 0);
-  let easyKm = nEasy > 0 ? remaining / nEasy : 0;
-  easyKm = clamp(roundHalf(easyKm), 3, 16);
+  // When the week's volume can't feed every scheduled day at least ~3 km,
+  // surplus easy days become rest days rather than flooring everything at
+  // 3 km (which would silently inflate low-volume weeks).
+  let usableEasy = nEasy;
+  while (usableEasy > 1 && remaining / usableEasy < 3) usableEasy--;
+  const skipDays = new Set(
+    nEasy > usableEasy
+      ? easyDays.filter((d) => !(b2bMin && d === 6)).slice(usableEasy - nEasy)
+      : []);
+  let easyKm = usableEasy > 0 ? remaining / usableEasy : 0;
+  // The long run must stay the longest run of the week: easy runs cap at
+  // ~85% of it (overflow volume is dropped, not dumped onto easy days).
+  const easyCapKm = longKm != null ? Math.max(4, Math.min(16, longKm * 0.85)) : 16;
+  easyKm = clamp(roundHalf(easyKm), 3, easyCapKm);
 
   // Injury substitution: convert the last easy day to optional cross-training
-  const xtrainDayIdx = profile.injuries.length && easyDays.length > 1
-    ? easyDays[easyDays.length - 1] === 6 && b2bMin ? easyDays[easyDays.length - 2] : easyDays[easyDays.length - 1]
+  const liveEasy = easyDays.filter((d) => !skipDays.has(d));
+  const xtrainDayIdx = profile.injuries.length && liveEasy.length > 1
+    ? liveEasy[liveEasy.length - 1] === 6 && b2bMin ? liveEasy[liveEasy.length - 2] : liveEasy[liveEasy.length - 1]
     : null;
 
   let qUsed = 0;
   for (const d of days) {
+    if (skipDays.has(d)) continue; // volume too low to feed this day — rest
     const date = addDays(weekStart, d);
     if (raceDate && date === raceDate && raceThisWeek) {
       workouts.push(raceDayWorkout(date, profile.goal));
@@ -394,14 +433,24 @@ function buildWeek(profile, weekIdx, weekStart, volKm, phase, totalWeeks, raceDa
       workouts.push(xtrainDay(date, 40, weekIdx));
       continue;
     }
-    // Recovery run the day after the long run for 6–7 day schedules
-    const type = d === 0 && profile.daysPerWeek >= 6 ? 'recovery' : 'easy';
-    workouts.push(easyRun(date, type === 'recovery' ? Math.max(3, roundHalf(easyKm * 0.7)) : easyKm, weekIdx, type));
+    // Recovery runs bracket the long run: the Sunday directly after it
+    // (non-ultra — ultras deliberately stack back-to-back volume) and the
+    // Monday after the weekend for 6–7 day schedules.
+    const afterLong = d === 6 && longDay === 5 && !ultra;
+    const type = afterLong || (d === 0 && profile.daysPerWeek >= 6) ? 'recovery' : 'easy';
+    const km = type === 'recovery'
+      ? Math.max(3, roundHalf(Math.min(easyKm * 0.65, longKm != null ? longKm * 0.5 : easyKm)))
+      : easyKm;
+    workouts.push(easyRun(date, km, weekIdx, type));
   }
 
+  // Report the volume actually scheduled (caps can absorb less than the
+  // nominal target), so plan rows and progress math stay honest.
+  const scheduledKm = workouts.reduce(
+    (s, x) => s + (x.distKm ?? (x.durMin && x.type !== 'xtrain' ? x.durMin / 7 : 0)), 0);
   return {
     idx: weekIdx, start: weekStart, phase, deload: isDeload,
-    targetKm: Math.round(volKm), workouts,
+    targetKm: Math.round(scheduledKm), workouts,
   };
 }
 
@@ -423,8 +472,46 @@ export function generatePlan(profile, fromDate = null) {
     const phase = profile.raceDate || profile.goal !== 'fitness'
       ? phaseFor(w, totalWeeks, taperWeeks, g.ultra)
       : phaseFor(w, totalWeeks, 0, false);
-    weeks.push(buildWeek(profile, w, weekStart, vols[w], phase, totalWeeks, profile.raceDate));
+    const pre = totalWeeks - taperWeeks;
+    const progFrac = pre > 1 ? w / (pre - 1) : 1;
+    weeks.push(buildWeek(profile, w, weekStart, vols[w], phase, totalWeeks, profile.raceDate, progFrac));
   }
+  // Smooth actual scheduled volume: structural changes (a second quality
+  // session appearing, caps releasing) can make the scheduled sum jump more
+  // than the nominal series' ≤10% — trim easy/recovery distance to restore
+  // the guarantee. Long runs and quality sessions are never touched.
+  const sumKm = (ws) => ws.reduce(
+    (s, x) => s + (x.distKm ?? (x.durMin && x.type !== 'xtrain' ? x.durMin / 7 : 0)), 0);
+  let prevFull = null;
+  for (const wk of weeks) {
+    if (wk.phase === 'taper' || wk.deload) continue;
+    if (prevFull != null) {
+      const capKm = Math.max(prevFull * 1.10, prevFull + 1);
+      let over = sumKm(wk.workouts) - capKm;
+      if (over > 0.25) {
+        // easy/recovery first (floor 3), then quality (floor 4); never long
+        const stages = [
+          [(x) => ['easy', 'recovery', 'strides'].includes(x.type), 3],
+          [(x) => ['tempo', 'intervals', 'reps', 'mpace', 'hills'].includes(x.type), 4],
+        ];
+        for (const [match, floor] of stages) {
+          const cuttable = wk.workouts
+            .filter((x) => match(x) && x.distKm > floor)
+            .sort((a, b) => b.distKm - a.distKm);
+          for (const e of cuttable) {
+            if (over <= 0.25) break;
+            const cut = Math.min(over, e.distKm - floor);
+            e.distKm = roundHalf(e.distKm - cut);
+            over -= cut;
+          }
+          if (over <= 0.25) break;
+        }
+        wk.targetKm = Math.round(sumKm(wk.workouts));
+      }
+    }
+    prevFull = sumKm(wk.workouts);
+  }
+
   // The plan starts the day it is generated: days earlier in the calendar
   // week never existed as training days, so they must not be scheduled (they
   // would instantly read as "missed").
@@ -461,20 +548,110 @@ export function estimateRaceTime(vdot, distKm) {
   return marathon * Math.pow(distKm / 42.195, 1.15);
 }
 
+// ---- measured fitness: reading VDOT back out of actually-logged workouts ----
+//
+// A workout's *target* pace is derived forward from VDOT (paceAtFraction).
+// This runs the same relationship in reverse: given the actual pace a
+// logged quality session was run at, and the fixed intensity fraction that
+// session type represents, solve for the VDOT that would have produced it.
+// Races/time-trials (a real, known duration) use the more precise
+// duration-based Daniels curve (vdotFromRace) instead of a fixed fraction.
+const EFFORT_FRACTION = {
+  threshold: INTENSITY_FRACTIONS.threshold,
+  interval: INTENSITY_FRACTIONS.interval,
+  rep: INTENSITY_FRACTIONS.rep,
+  marathon: INTENSITY_FRACTIONS.marathon,
+};
+const EVIDENCE_HALF_LIFE_DAYS = 21; // recent efforts count more; ~3-week memory
+const MIN_EFFORT_KM = 1.5;
+const MIN_EFFORT_SEC = 240; // effort too short to trust as a fitness signal
+
+// Easy/long/recovery runs are deliberately run well below capacity, so their
+// pace says little about fitness — only genuine efforts (quality sessions,
+// races, and near-maximal ad-hoc runs) are used as evidence.
+function fitnessEvidencePoints(plan, extraLogs, asOfDate) {
+  const points = [];
+  const add = (date, vdot, conf) => {
+    if (date > asOfDate) return;
+    if (!(vdot > 15 && vdot < 85)) return; // reject bad/garbled log data
+    points.push({ date, vdot, conf });
+  };
+  if (plan) {
+    for (const wk of plan.weeks) {
+      for (const w of wk.workouts) {
+        if (w.status !== 'done' || !w.log?.distKm || !w.log?.durSec) continue;
+        if (w.log.distKm < MIN_EFFORT_KM || w.log.durSec < MIN_EFFORT_SEC) continue;
+        if (w.type === 'race') add(w.date, vdotFromRace(w.log.distKm, w.log.durSec), 1.0);
+        else if (EFFORT_FRACTION[w.paceKey]) {
+          add(w.date, impliedVdotFromEffort(w.log.distKm, w.log.durSec, EFFORT_FRACTION[w.paceKey]), 0.6);
+        }
+      }
+    }
+  }
+  for (const e of extraLogs || []) {
+    // An unplanned run only tells us fitness if it was run near-maximally —
+    // treat a high-RPE ad-hoc effort as an informal time trial.
+    if (e.rpe >= 9 && e.distKm >= MIN_EFFORT_KM && e.durSec >= MIN_EFFORT_SEC) {
+      add(e.date, vdotFromRace(e.distKm, e.durSec), 0.8);
+    }
+  }
+  return points;
+}
+
+// Full picture behind the effective VDOT on a date: the assumption-based
+// baseline (entered fitness + capped generic weekly gain, same as before),
+// the recency-weighted VDOT implied by real logged efforts (null if none
+// exist yet), and the blend actually used. Trust in the measured signal
+// grows with how much evidence exists, so one lucky or bad session can nudge
+// the estimate but never fully override it.
+export function vdotBreakdown(profile, dateStr, plan = null, extraLogs = []) {
+  const anchor = profile.vdotDate || dateStr;
+  const weeks = Math.max(0, diffDays(anchor, dateStr) / 7);
+  const gain = Math.min(weeks * VDOT_GAIN_RATE[profile.experience],
+    VDOT_GAIN_CAP[profile.experience]);
+  const baseline = profile.vdot + gain;
+
+  const points = fitnessEvidencePoints(plan, extraLogs, dateStr);
+  if (!points.length) return { baseline, measured: null, blended: baseline, nPoints: 0, trust: 0 };
+
+  let wsum = 0, vsum = 0;
+  for (const p of points) {
+    const age = Math.max(0, diffDays(p.date, dateStr));
+    const recency = Math.pow(0.5, age / EVIDENCE_HALF_LIFE_DAYS);
+    const w = p.conf * recency;
+    wsum += w; vsum += w * p.vdot;
+  }
+  const measured = vsum / wsum;
+  const trust = clamp(0.25 + points.length * 0.15, 0.25, 0.85);
+  return { baseline, measured, blended: trust * measured + (1 - trust) * baseline, nPoints: points.length, trust };
+}
+
+// Effective VDOT on a given date: baseline projection blended with whatever
+// real performance evidence has been logged by then. This is what makes
+// pace targets both progress through the plan AND respond to actually
+// running faster (or slower) than the plan assumed.
+export function vdotForDate(profile, dateStr, plan = null, extraLogs = []) {
+  return vdotBreakdown(profile, dateStr, plan, extraLogs).blended;
+}
+
+export function pacesForDate(profile, dateStr, plan = null, extraLogs = []) {
+  return trainingPaces(vdotForDate(profile, dateStr, plan, extraLogs));
+}
+
 // Current-fitness estimate + projection at race day assuming the plan is
-// followed (VDOT gain over the remaining training weeks).
-export function projectedRaceTime(profile, plan) {
+// followed. Both anchored at vdotDate so "current" also drifts up as
+// training accumulates, and both reflect logged evidence if any exists.
+export function projectedRaceTime(profile, plan, extraLogs = []) {
   const g = GOALS[profile.goal];
   if (!g.distKm) return null;
-  const current = estimateRaceTime(profile.vdot, g.distKm);
+  const vToday = vdotForDate(profile, todayStr(), plan, extraLogs);
+  const current = estimateRaceTime(vToday, g.distKm);
   const raceDate = plan?.raceDate || profile.raceDate;
   if (!raceDate || diffDays(todayStr(), raceDate) < 0) {
     return { current, projected: null, gain: 0 };
   }
-  const weeksLeft = Math.max(0, diffDays(todayStr(), raceDate) / 7);
-  const gain = Math.min(weeksLeft * VDOT_GAIN_RATE[profile.experience],
-    VDOT_GAIN_CAP[profile.experience]);
-  return { current, projected: estimateRaceTime(profile.vdot + gain, g.distKm), gain };
+  const vRace = vdotForDate(profile, raceDate, plan, extraLogs);
+  return { current, projected: estimateRaceTime(vRace, g.distKm), gain: vRace - vToday };
 }
 
 // Regenerate future weeks (from the current week) after a profile change,
@@ -497,6 +674,39 @@ export function replanFrom(plan, profile, fromDateStr) {
   fresh.weeks = past.concat(fresh.weeks.map((w, i) => ({ ...w })));
   fresh.startDate = past.length ? past[0].start : fresh.startDate;
   return fresh;
+}
+
+// Reverse-engineered plan: given current fitness and a goal time, how long
+// (and how aggressive) does the plan need to be? Inverts the same VDOT
+// gain-rate heuristic the projection uses.
+export function planRecommendation(goalKey, currentVdot, goalTimeSec, experience) {
+  const g = GOALS[goalKey];
+  if (!g.distKm) return null;
+  const currentTime = estimateRaceTime(currentVdot, g.distKm);
+  // find the VDOT that produces the goal time at this distance (bisection —
+  // estimateRaceTime is monotonically decreasing in VDOT)
+  let lo = 20, hi = 85;
+  for (let i = 0; i < 50; i++) {
+    const mid = (lo + hi) / 2;
+    if (estimateRaceTime(mid, g.distKm) > goalTimeSec) lo = mid; else hi = mid;
+  }
+  const targetVdot = (lo + hi) / 2;
+  const delta = targetVdot - currentVdot;
+  const rate = VDOT_GAIN_RATE[experience];
+  const cap = VDOT_GAIN_CAP[experience];
+  const wk = (r) => clamp(Math.ceil(delta / r), g.minWeeks, 32);
+  return {
+    currentTime, targetVdot: Math.round(targetVdot * 10) / 10, delta,
+    already: delta <= 0.3,
+    // one training block realistically delivers ~`cap` VDOT points
+    withinOneBlock: delta <= cap,
+    stretch: delta > cap * 1.5,
+    tiers: delta > 0.3 ? {
+      conservative: wk(rate * 0.75),
+      moderate: wk(rate),
+      aggressive: wk(rate * 1.35),
+    } : { conservative: g.minWeeks, moderate: g.minWeeks, aggressive: g.minWeeks },
+  };
 }
 
 // ---- missed-workout reshuffle ----
@@ -589,12 +799,13 @@ export function weekOf(plan, dateStr) {
   return plan.weeks.find((w) => w.start === m) || null;
 }
 
-export function pacesForProfile(profile) {
-  return trainingPaces(profile.vdot);
+// Today's paces (fitness drifts up with training — see vdotForDate)
+export function pacesForProfile(profile, plan = null, extraLogs = []) {
+  return pacesForDate(profile, todayStr(), plan, extraLogs);
 }
 
-export function goalPrediction(profile) {
+export function goalPrediction(profile, plan = null, extraLogs = []) {
   const g = GOALS[profile.goal];
   if (!g.distKm) return null;
-  return predictRace(profile.vdot, g.distKm);
+  return predictRace(vdotForDate(profile, todayStr(), plan, extraLogs), g.distKm);
 }

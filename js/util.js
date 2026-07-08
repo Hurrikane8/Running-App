@@ -106,24 +106,6 @@ export function fmtPaceDisplay(secPerKm, settings) {
   return fmtPace(secPerKm, settings.units);
 }
 
-export function fmtPaceRangeDisplay(loSecPerKm, hiSecPerKm, settings) {
-  if (settings.paceDisplay === 'treadmill') {
-    // lo = slower pace = lower mph, so the range still reads low→high
-    return `${paceToMph(loSecPerKm).toFixed(1)}–${paceToMph(hiSecPerKm).toFixed(1)} mph`;
-  }
-  return fmtPaceRange(loSecPerKm, hiSecPerKm, settings.units);
-}
-
-export function fmtPaceRange(loSecPerKm, hiSecPerKm, units) {
-  const one = (spk) => {
-    const spu = units === 'mi' ? spk * KM_PER_MI : spk;
-    const m = Math.floor(spu / 60);
-    const s = Math.round(spu % 60);
-    return `${s === 60 ? m + 1 : m}:${String(s === 60 ? 0 : s).padStart(2, '0')}`;
-  };
-  return `${one(loSecPerKm)}–${one(hiSecPerKm)} /${units}`;
-}
-
 export function roundHalf(x) {
   return Math.round(x * 2) / 2;
 }

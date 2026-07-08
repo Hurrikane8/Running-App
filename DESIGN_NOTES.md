@@ -74,6 +74,65 @@ marathon prediction with a fatigue exponent steeper than Riegel's road value
 (1.15), and are labeled as flat-course estimates since terrain dominates ultra
 finish times.
 
+### Weekly structure guarantees
+The allocator enforces, in order: the long run is always the longest session
+of the week (easy runs cap at ~85% of it; small deload weeks floor the long
+run above the quality-session minimum); weekly volume is capped by what the
+chosen day count can absorb; days the volume can't feed at ≥3 km become rest
+days rather than junk 3 km fillers; the Sunday after a long run is a short
+recovery run (non-ultra — ultras deliberately stack back-to-back weekend
+runs, ramped from ~35% to ~60% of the long run through build/peak); and a
+final smoothing pass trims easy then quality distance so scheduled
+week-over-week growth stays within the ~10% guideline between full-load
+weeks. Long-run length progresses continuously across the plan rather than
+stepping at phase boundaries.
+
+### Progressive pace targets
+Pace targets are derived from the *effective* VDOT on the workout's date,
+which blends two sources rather than trusting either alone:
+
+- **Baseline projection** — entered fitness plus the same capped
+  experience-scaled gain rate used by the race-day projection, anchored at
+  the last fitness test (`vdotDate`). This is what moves paces forward even
+  with no new data (week 1 vs. week 16 of a plan differ).
+- **Measured evidence** — VDOT read back out of actually logged quality
+  workouts. A workout's *target* pace is normally derived forward from VDOT
+  at a fixed intensity fraction (e.g. threshold ≈ 87% VDOT); this runs that
+  relationship in reverse: given the pace a logged tempo/interval/rep/
+  goal-pace session was actually run at, solve for the VDOT that would have
+  produced it. Races and near-maximal ad-hoc efforts (RPE ≥ 9) use the more
+  precise duration-based Daniels curve instead of a fixed fraction. Easy,
+  long, recovery, and cross-training sessions are deliberately run below
+  capacity and are excluded — their pace says nothing about fitness.
+  Evidence is recency-weighted (21-day half-life, so a hard effort from
+  today counts more than one from six weeks ago) and requires the effort be
+  substantial (≥1.5 km, ≥4 min) to filter out noise.
+
+The two are blended with a trust weight that grows with how much evidence
+exists (0.25 for a single data point, up to 0.85 with four or more recent
+efforts) — so one unusually fast or slow session nudges the estimate without
+fully overriding it, and someone who has never logged a quality session
+still gets sensible, calendar-based progression. This means a runner who is
+genuinely fitter than their entered weekly mileage suggests — i.e. actually
+hitting or beating quality-session targets — gets faster future pace
+prescriptions, not just ones based on time elapsed. Settings shows how many
+logged efforts are currently informing the estimate. Logging a new race/
+time-trial in Settings re-anchors the baseline term (`vdotDate`).
+
+Displayed paces are single numbers, not ranges: Daniels prescribes easy
+running as a 59–74% VDOT band, but the app shows the midpoint as one target
+pace for at-a-glance clarity — the full band is still used internally to
+compute that midpoint.
+
+### Reverse-engineered plans
+The onboarding "I have a goal time" path inverts the projection: it solves
+for the VDOT the goal time requires, measures the gap from the current
+race/time-trial result, and divides by the experience-scaled weekly gain
+rate to get the required plan length — presented as conservative / moderate
+/ aggressive timelines (0.75×, 1×, 1.35× assumed adaptation rate). Gaps
+beyond what one training block realistically delivers are flagged as
+multi-cycle goals rather than promised.
+
 ### Injury accommodations
 If the user flags a current niggle, the generator: caps weekly progression at 6–8%,
 converts one easy day to an optional low-impact cross-training day, and attaches

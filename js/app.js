@@ -64,7 +64,7 @@ function showSplash() {
   const splash = document.getElementById('splash');
   const q = quoteForDate();
   document.getElementById('splash-quote').textContent = `“${q.t}”`;
-  document.getElementById('splash-attr').textContent = `— ${q.a}`;
+  document.getElementById('splash-attr').textContent = q.a;
   splash.hidden = false;
   let closed = false;
   const close = () => {
