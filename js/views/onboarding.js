@@ -67,7 +67,7 @@ function stepWelcome() {
       <h1 style="font-size:34px">Stride</h1>
       <p class="lead" style="max-width:340px;margin:8px auto 30px">
         Your personal running coach. Answer a few questions and get an
-        adaptive, science-based training plan — stored only on this device.
+        adaptive, science-based training plan, stored only on this device.
       </p>
       <button class="btn primary" data-act="next" style="max-width:280px">Build my plan</button>
     </div>`;
@@ -80,11 +80,11 @@ function stepMode() {
     <div class="opt-grid">
       <button class="opt ${draft.mode === 'date' ? 'selected' : ''}" data-mode="date">
         I have a race date
-        <small>Pick the race and the day — the plan fills the time between.</small>
+        <small>Pick the race and the day. The plan fills the time between.</small>
       </button>
       <button class="opt ${draft.mode === 'goaltime' ? 'selected' : ''}" data-mode="goaltime">
         I have a goal time
-        <small>Tell me your current fitness and target time — I'll work out how long and how hard the plan needs to be.</small>
+        <small>Give me your current fitness and target time. I'll work out how long and how hard the plan needs to be.</small>
       </button>
     </div>
     ${navButtons(!!draft.mode)}`;
@@ -95,7 +95,7 @@ function stepGoal() {
   const opts = entries.map(([k, g]) => `
     <button class="opt ${draft.goal === k ? 'selected' : ''}" data-goal="${k}">
       ${g.label}
-      ${k === 'fitness' ? '<small>No race — build fitness &amp; consistency</small>' : ''}
+      ${k === 'fitness' ? '<small>No race. Build fitness &amp; consistency</small>' : ''}
     </button>`).join('');
   return `
     <h1>What are you training for?</h1>
@@ -112,8 +112,8 @@ function stepRaceDate() {
   if (draft.raceDate) {
     const weeks = planWeeksFor(draft.goal, draft.raceDate);
     note = weeks < g.minWeeks
-      ? `<p class="hint">⚠ That's ${weeks} weeks away — shorter than the recommended ${g.minWeeks}+ weeks for a ${g.label}. The plan will be compressed; adjust expectations accordingly.</p>`
-      : `<p class="hint">That gives you a ${weeks}-week plan — a good runway for a ${g.label}.</p>`;
+      ? `<p class="hint">Heads up: that's ${weeks} weeks away, shorter than the recommended ${g.minWeeks}+ weeks for a ${g.label}. The plan will be compressed; adjust expectations accordingly.</p>`
+      : `<p class="hint">That gives you a ${weeks}-week plan. A good runway for a ${g.label}.</p>`;
   }
   return `
     <h1>When is your race?</h1>
@@ -129,7 +129,7 @@ function stepRaceDate() {
 function stepExperience() {
   const opts = [
     ['beginner', 'Beginner', 'New to running, or returning after a long break'],
-    ['intermediate', 'Intermediate', 'Running regularly for 1–3 years, some races done'],
+    ['intermediate', 'Intermediate', 'Running regularly for 1-3 years, some races done'],
     ['advanced', 'Advanced', 'Several years of structured training and racing'],
     ['elite', 'Competitive', 'High volume, racing at a high level'],
   ].map(([k, l, d]) => `
@@ -148,15 +148,15 @@ function stepAbility() {
     `<option value="${d.key}" ${draft.refDist === d.key ? 'selected' : ''}>${d.label}</option>`).join('');
   return `
     <h1>Current fitness</h1>
-    <p class="lead">Your typical week now, plus a recent race or time trial if you have one — it makes your pace targets much more accurate.</p>
+    <p class="lead">Your typical week now, plus a recent race or time trial if you have one. It makes your pace targets much more accurate.</p>
     <div class="field">
       <label>Current weekly distance (${draft.units})</label>
       <input type="number" inputmode="decimal" min="0" max="300" id="ob-weekly" value="${esc(draft.weeklyDist)}" placeholder="e.g. 20">
     </div>
     <div class="field">
-      <label>Recent race / time trial ${draft.mode === 'goaltime' ? '(required — it anchors the math)' : '(optional)'}</label>
+      <label>Recent race / time trial ${draft.mode === 'goaltime' ? '(required, it anchors the math)' : '(optional)'}</label>
       <select id="ob-refdist">
-        ${draft.mode === 'goaltime' ? '<option value="">Choose a distance…</option>' : '<option value="">None — estimate from experience</option>'}
+        ${draft.mode === 'goaltime' ? '<option value="">Choose a distance…</option>' : '<option value="">None (estimate from experience)</option>'}
         ${distOpts}
       </select>
     </div>
@@ -165,7 +165,7 @@ function stepAbility() {
       <div class="field"><label>Minutes</label><input type="number" inputmode="numeric" min="0" max="59" id="ob-m" value="${esc(draft.refM)}" placeholder="25"></div>
       <div class="field"><label>Seconds</label><input type="number" inputmode="numeric" min="0" max="59" id="ob-s" value="${esc(draft.refS)}" placeholder="0"></div>
     </div>
-    <p class="hint">No recent time? No problem — you can run a time trial later and update your fitness in Settings.</p>
+    <p class="hint">No recent time? No problem. You can run a time trial later and update your fitness in Settings.</p>
     ${navButtons(abilityValid())}`;
 }
 
@@ -216,16 +216,16 @@ function stepRecommend() {
   };
   let verdict;
   if (rec.already) {
-    verdict = `<p class="lead">Good news — your current fitness already supports ${fmtT(goalTimeSec())}. A short ${g.minWeeks}-week sharpening block will lock it in.</p>`;
+    verdict = `<p class="lead">Good news: your current fitness already supports ${fmtT(goalTimeSec())}. A short ${g.minWeeks}-week sharpening block will lock it in.</p>`;
   } else if (rec.stretch) {
-    verdict = `<p class="lead">⚠ That's a big jump (+${rec.delta.toFixed(1)} fitness points, est. ${fmtT(rec.currentTime)} today). One training block realistically won't close all of it — expect this goal to take more than one cycle. The plan below targets the maximum realistic gain.</p>`;
+    verdict = `<p class="lead">That's a big jump (+${rec.delta.toFixed(1)} fitness points, est. ${fmtT(rec.currentTime)} today). One training block realistically won't close all of it. Expect this goal to take more than one cycle. The plan below targets the maximum realistic gain.</p>`;
   } else {
     verdict = `<p class="lead">From an estimated ${fmtT(rec.currentTime)} today, ${fmtT(goalTimeSec())} is achievable (+${rec.delta.toFixed(1)} fitness points). Pick how hard you want to chase it:</p>`;
   }
   const tiers = [
     ['conservative', 'Conservative', 'Steadier build with margin for missed weeks and life getting in the way.'],
     ['moderate', 'Moderate', 'The recommended balance of progress and recovery.'],
-    ['aggressive', 'Aggressive', 'Fastest path to the goal — little room for setbacks.'],
+    ['aggressive', 'Aggressive', 'Fastest path to the goal, little room for setbacks.'],
   ];
   return `
     <h1>The verdict</h1>
@@ -233,7 +233,7 @@ function stepRecommend() {
     <div class="opt-grid">
       ${tiers.map(([k, label, blurb]) => `
         <button class="opt ${draft.tier === k ? 'selected' : ''}" data-tier="${k}">
-          ${label} — ${weeksFor(k)} weeks${k === 'moderate' ? ' (recommended)' : ''}
+          ${label}: ${weeksFor(k)} weeks${k === 'moderate' ? ' (recommended)' : ''}
           <small>${blurb} Race day: ${dateFor(k)}.</small>
         </button>`).join('')}
     </div>
@@ -251,7 +251,7 @@ function stepDays() {
     </button>`).join('');
   return `
     <h1>How many days can you run?</h1>
-    <p class="lead">Be realistic — a plan you can hit beats a plan you admire.</p>
+    <p class="lead">Be realistic. A plan you can hit beats a plan you admire.</p>
     <div class="opt-grid two">${opts}</div>
     ${navButtons(!!draft.daysPerWeek)}`;
 }
@@ -263,7 +263,7 @@ function stepInjuries() {
     <h1>Any current niggles?</h1>
     <p class="lead">Select anything bothering you now. The plan will progress more gently and offer low-impact substitutions.</p>
     <div class="opt-grid two">
-      <button class="opt ${draft.injuries.length === 0 ? 'selected' : ''}" data-injury="none" style="grid-column:1/-1">All clear — no issues</button>
+      <button class="opt ${draft.injuries.length === 0 ? 'selected' : ''}" data-injury="none" style="grid-column:1/-1">All clear, no issues</button>
       ${opts}
     </div>
     ${navButtons(true)}`;

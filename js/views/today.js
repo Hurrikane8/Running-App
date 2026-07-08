@@ -34,7 +34,7 @@ export function renderToday(container, refresh) {
   if (missed.length && state.ui.reshuffleDismissed !== today) {
     html += `<div class="banner">
       <b>${missed.length === 1 ? 'A workout was missed' : `${missed.length} workouts were missed`} this week.</b>
-      Life happens — want me to reshuffle the rest of the week so the key sessions still fit?
+      Want me to reshuffle the rest of the week so the key sessions still fit?
       <div class="btn-row">
         <button class="btn primary" id="do-reshuffle">Reshuffle my week</button>
         <button class="btn ghost" id="dismiss-reshuffle">Leave it</button>
@@ -45,7 +45,7 @@ export function renderToday(container, refresh) {
   if (!todays.length) {
     const done = plan?.raceDate && diffDays(today, plan.raceDate) < 0;
     html += `<div class="card today-hero" style="text-align:center">
-      <div class="today-title" style="font-size:24px">${done ? 'Plan complete 🎉' : 'Rest day'}</div>
+      <div class="today-title" style="font-size:24px">${done ? 'Plan complete' : 'Rest day'}</div>
       <p style="color:var(--ink-2); margin-top:6px">${done
         ? 'Your race has passed. Head to Settings to set a new goal and keep rolling.'
         : 'Recovery is where the adaptation happens. Walk, stretch, sleep well.'}</p>

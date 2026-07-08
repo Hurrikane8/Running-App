@@ -66,7 +66,7 @@ export function renderSettings(container, refresh, restartOnboarding) {
 
     <div class="card">
       <h3 style="margin-bottom:6px">Data</h3>
-      <p class="hint" style="margin-bottom:12px">Your plan and every logged workout live only in this browser. Export a JSON backup regularly — it restores everything if local storage is ever cleared.</p>
+      <p class="hint" style="margin-bottom:12px">Your plan and every logged workout live only in this browser. Export a JSON backup regularly. It restores everything if local storage is ever cleared.</p>
       <div class="btn-row" style="margin-top:0">
         <button class="btn" id="export-data">Export data</button>
         <button class="btn" id="import-data">Import data</button>

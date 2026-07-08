@@ -26,16 +26,16 @@ export function typeChip(type) {
 // What each session type is, why it's in the plan, how it should feel.
 // Rendered as the run-type guide on the Plan tab.
 export const TYPE_INFO = [
-  { type: 'easy', what: 'Relaxed running that builds your aerobic base — heart, capillaries, mitochondria, tendons.', how: 'Conversational the whole way (RPE 3–4). Most of your week should feel this comfortable — that is the 80/20 rule at work.' },
+  { type: 'easy', what: 'Relaxed running that builds your aerobic base: heart, capillaries, mitochondria, tendons.', how: 'Conversational the whole way (RPE 3-4). Most of your week should feel this comfortable. That is the 80/20 rule at work.' },
   { type: 'long', what: 'The longest run of the week. Builds endurance, fuel economy and mental durability.', how: 'Easy effort, start slower than feels natural. On marathon/half plans the final stretch sometimes tightens to goal pace.' },
-  { type: 'tempo', what: 'Threshold running — the pace you could hold for about an hour flat-out. Raises the speed you can sustain without blowing up.', how: 'Comfortably hard (RPE 6–7): you could speak a sentence, not a paragraph.' },
-  { type: 'intervals', what: 'VO2max repeats — 3–5 minute efforts that push your engine\'s ceiling.', how: 'Hard but controlled (RPE 8–9), even pacing across reps, jog recoveries. The last rep should feel like one more was possible.' },
-  { type: 'reps', what: 'Short, fast repetitions for speed and running economy, not fitness.', how: 'Quick and relaxed (RPE 8), never straining — full recovery between reps is part of the workout.' },
-  { type: 'mpace', what: 'Goal-pace running that grooves the exact rhythm you will race at.', how: 'Locked to your goal pace (RPE 5–6). It should feel almost automatic by race week.' },
-  { type: 'hills', what: 'Uphill efforts building leg strength and power with less impact than flat speed work.', how: 'Strong uphill effort (RPE 7–8), tall posture, easy jog or walk back down.' },
-  { type: 'strides', what: 'An easy run finished with a few 20–30 s smooth accelerations to keep the legs sharp.', how: 'Easy pace throughout; strides build up, float, ease off — never a sprint.' },
-  { type: 'recovery', what: 'A deliberately short, gentle run that promotes blood flow after hard or long days.', how: 'Slower than feels necessary (RPE 2–3). Walking breaks are fine.' },
-  { type: 'xtrain', what: 'Optional low-impact aerobic work — bike, swim, elliptical, incline walk — keeping the engine on with less pounding.', how: 'Easy-to-steady effort (RPE 3–5), roughly the listed duration.' },
+  { type: 'tempo', what: 'Threshold running, the pace you could hold for about an hour flat-out. Raises the speed you can sustain without blowing up.', how: 'Comfortably hard (RPE 6-7): you could speak a sentence, not a paragraph.' },
+  { type: 'intervals', what: 'VO2max repeats: 3-5 minute efforts that push your engine\'s ceiling.', how: 'Hard but controlled (RPE 8-9), even pacing across reps, jog recoveries. The last rep should feel like one more was possible.' },
+  { type: 'reps', what: 'Short, fast repetitions for speed and running economy, not fitness.', how: 'Quick and relaxed (RPE 8), never straining. Full recovery between reps is part of the workout.' },
+  { type: 'mpace', what: 'Goal-pace running that grooves the exact rhythm you will race at.', how: 'Locked to your goal pace (RPE 5-6). It should feel almost automatic by race week.' },
+  { type: 'hills', what: 'Uphill efforts building leg strength and power with less impact than flat speed work.', how: 'Strong uphill effort (RPE 7-8), tall posture, easy jog or walk back down.' },
+  { type: 'strides', what: 'An easy run finished with a few 20-30 s smooth accelerations to keep the legs sharp.', how: 'Easy pace throughout; strides build up, float, ease off. Never a sprint.' },
+  { type: 'recovery', what: 'A deliberately short, gentle run that promotes blood flow after hard or long days.', how: 'Slower than feels necessary (RPE 2-3). Walking breaks are fine.' },
+  { type: 'xtrain', what: 'Optional low-impact aerobic work (bike, swim, elliptical, incline walk) that keeps the engine on with less pounding.', how: 'Easy-to-steady effort (RPE 3-5), roughly the listed duration.' },
   { type: 'race', what: 'The day it all pays off.', how: 'Even or slightly negative splits. Trust the taper, execute your fueling plan.' },
 ];
 
@@ -53,7 +53,7 @@ export function targetLine(w, profile, settings, evidence = {}) {
 }
 
 export function paceTarget(w, profile, settings, evidence = {}) {
-  if (!w.paceKey || !profile) return w.type === 'long' && !w.paceKey ? 'easy effort (RPE 3–4)' : null;
+  if (!w.paceKey || !profile) return w.type === 'long' && !w.paceKey ? 'easy effort (RPE 3-4)' : null;
   const p = pacesForDate(profile, w.date, evidence.plan, evidence.extraLogs); // paces reflect logged performance + projected fitness
   const easyPace = (p.easy[0] + p.easy[1]) / 2; // a single target, not the full prescribed band
   switch (w.paceKey) {
@@ -119,7 +119,7 @@ export function openLogModal(workout, onSaved) {
   const el = openModal(`
     <button class="modal-close" aria-label="Close">×</button>
     <h2>${isAdhoc ? 'Log a run' : `Log: ${esc(workout.title)}`}</h2>
-    <p class="sub">${isAdhoc ? 'An unplanned run — it still counts toward your totals.' : 'How did it go?'}</p>
+    <p class="sub">${isAdhoc ? 'An unplanned run. It still counts toward your totals.' : 'How did it go?'}</p>
     ${isAdhoc ? `<div class="field"><label>Date</label><input type="date" id="log-date" value="${todayStr()}" max="${todayStr()}"></div>` : ''}
     <div class="field-row">
       <div class="field"><label>Distance (${units})</label>

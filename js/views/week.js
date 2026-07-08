@@ -28,7 +28,7 @@ export function renderWeek(container, refresh) {
       <button class="btn" id="wk-prev" aria-label="Previous week">‹</button>
       <div class="label">
         <b>${week ? `Week ${weekNo} of ${plan.weeks.length}` : 'Outside plan'}</b>
-        <span>${fmtDateShort(shownMonday)} – ${fmtDateShort(addDays(shownMonday, 6))}${week ? ` · <span class="phase-chip">${week.deload ? 'recovery' : week.phase}</span>` : ''}</span>
+        <span>${fmtDateShort(shownMonday)} to ${fmtDateShort(addDays(shownMonday, 6))}${week ? ` · <span class="phase-chip">${week.deload ? 'recovery' : week.phase}</span>` : ''}</span>
       </div>
       <button class="btn" id="wk-next" aria-label="Next week">›</button>
     </div>
@@ -45,7 +45,7 @@ export function renderWeek(container, refresh) {
   if (movingId) {
     const mv = findWorkout(plan, movingId);
     html += `<div class="move-banner">
-      <span>Moving “${esc(mv?.workout.title || '')}” — tap a day</span>
+      <span>Moving “${esc(mv?.workout.title || '')}”: tap a day</span>
       <button id="cancel-move">Cancel</button>
     </div>`;
   }
@@ -59,7 +59,7 @@ export function renderWeek(container, refresh) {
       <div class="day-col"><b>${DAY_ABBR[d]}</b><span>${dnum}</span></div>
       <div class="day-main">`;
     if (!dayW.length) {
-      html += `<div class="rest">${week ? 'Rest' : '—'}</div>`;
+      html += `<div class="rest">${week ? 'Rest' : '-'}</div>`;
     }
     for (const w of dayW) {
       html += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:2px 0" data-wid="${w.id}">

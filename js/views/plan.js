@@ -26,7 +26,7 @@ export function renderPlan(container) {
       if (profile.goalTimeSec) {
         const diff = proj.projected - profile.goalTimeSec;
         goalLine = `<div style="font-size:15px; font-weight:750; margin-top:6px">
-          Goal: ${fmtTime(profile.goalTimeSec)} — ${diff <= 0
+          Goal: ${fmtTime(profile.goalTimeSec)} ${diff <= 0
             ? `<span style="color:var(--good)">on track (${fmtTime(-diff)} ahead)</span>`
             : `<span style="color:var(--accent-text)">${fmtTime(diff)} to close</span>`}
         </div>`;
@@ -39,7 +39,7 @@ export function renderPlan(container) {
           <p class="hint" style="margin-top:4px">
             At today's fitness: ${fmtTime(proj.current)} · projection assumes the plan is
             followed through race day (≈ +${proj.gain.toFixed(1)} VDOT).
-            ${g.ultra ? '<br>Ultra estimates assume a flat, runnable course — terrain and vert add time.' : ''}
+            ${g.ultra ? '<br>Ultra estimates assume a flat, runnable course. Terrain and vert add time.' : ''}
           </p>
           ${evidenceLine}
         </div>`;
@@ -48,7 +48,7 @@ export function renderPlan(container) {
         <div class="card today-hero" style="text-align:center">
           <div class="today-date">Estimated ${esc(g.label)} (today's fitness)</div>
           <div class="today-title" style="font-size:44px; font-variant-numeric:tabular-nums">${fmtTime(proj.current)}</div>
-          <p class="hint" style="margin-top:2px">Race date has passed — set a new goal in Settings for a fresh projection.</p>
+          <p class="hint" style="margin-top:2px">Race date has passed. Set a new goal in Settings for a fresh projection.</p>
           ${evidenceLine}
         </div>`;
     }
@@ -57,7 +57,7 @@ export function renderPlan(container) {
       <div class="card today-hero" style="text-align:center">
         <div class="today-date">Estimated 5K at today's fitness</div>
         <div class="today-title" style="font-size:44px; font-variant-numeric:tabular-nums">${fmtTime(estimateRaceTime(vdotForDate(profile, today, plan, state.extraLogs), 5))}</div>
-        <p class="hint" style="margin-top:2px">No race on the calendar — set one in Settings to get a race-day projection.</p>
+        <p class="hint" style="margin-top:2px">No race on the calendar. Set one in Settings to get a race-day projection.</p>
         ${evidenceLine}
       </div>`;
   }
@@ -70,7 +70,7 @@ export function renderPlan(container) {
       ${daysToRace != null && daysToRace >= 0
         ? `<div class="stat-tile"><div class="v">${daysToRace}</div><div class="k">days to race</div></div>`
         : `<div class="stat-tile"><div class="v">${plan.weeks.length}</div><div class="k">weeks total</div></div>`}
-      <div class="stat-tile"><div class="v">${curWeek ? `${curWeek.idx + 1}/${plan.weeks.length}` : '—'}</div><div class="k">current week</div></div>
+      <div class="stat-tile"><div class="v">${curWeek ? `${curWeek.idx + 1}/${plan.weeks.length}` : '-'}</div><div class="k">current week</div></div>
       <div class="stat-tile"><div class="v">${fmtDist(peakKm, units, 0)}</div><div class="k">peak week</div></div>
     </div>`;
 

@@ -1,10 +1,11 @@
 // Cache-first service worker for the app shell. Bump VERSION on deploys.
-const VERSION = 'stride-v5';
+const VERSION = 'stride-v6';
 const SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
   './css/styles.css',
+  './fonts/space-grotesk-var.woff2',
   './js/app.js',
   './js/util.js',
   './js/storage.js',

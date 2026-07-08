@@ -112,30 +112,30 @@ function fmtMin(min) {
 
 const TIPS = {
   easy: [
-    'Easy means genuinely easy — you should be able to hold a conversation the whole way.',
+    'Easy means genuinely easy. You should be able to hold a conversation the whole way.',
     'If your watch pace looks slow today, good. Easy runs build the engine; save the effort for quality days.',
-    'Relax your shoulders and shorten your stride slightly — smooth beats fast on easy days.',
+    'Relax your shoulders and shorten your stride slightly. Smooth beats fast on easy days.',
   ],
   recovery: [
     'This run is about blood flow, not fitness. Slower than feels necessary is exactly right.',
     'Keep it short and gentle. If your legs feel heavy, walking breaks are fine.',
   ],
   long: [
-    'Start slower than feels natural — the goal is finishing steady, not starting fast.',
-    'Practice fueling: take on carbs every 30–40 minutes on runs over 90 minutes.',
+    'Start slower than feels natural. The goal is finishing steady, not starting fast.',
+    'Practice fueling: take on carbs every 30-40 minutes on runs over 90 minutes.',
     'Break the distance into thirds mentally: settle, cruise, then hold form when tired.',
   ],
   ultralong: [
-    'Time on feet is the goal, not pace. Hike the hills — it is free speed later.',
+    'Time on feet is the goal, not pace. Hike the hills. It is free speed later.',
     'Treat this as a fueling rehearsal: eat early, eat often, and note what sits well.',
     'Run the flats and downhills relaxed; power-hike anything steep. That is race craft.',
   ],
   tempo: [
-    'Threshold effort is "comfortably hard" — you could speak a sentence, not a paragraph.',
+    'Threshold effort is "comfortably hard": you could speak a sentence, not a paragraph.',
     'Do not race the tempo. The last rep should feel like you could do one more.',
   ],
   intervals: [
-    'Run the first rep as if it were the fifth — even pacing wins interval sessions.',
+    'Run the first rep as if it were the fifth. Even pacing wins interval sessions.',
     'Full recovery is part of the workout. Jog it out and let your breathing settle.',
   ],
   reps: [
@@ -145,10 +145,10 @@ const TIPS = {
     'Goal-pace running teaches rhythm. Lock into the pace and let it feel automatic.',
   ],
   strides: [
-    'Strides are 20–30 s of fast, relaxed running — build up, float, ease off. Not sprints.',
+    'Strides are 20-30 s of fast, relaxed running: build up, float, ease off. Not sprints.',
   ],
   xtrain: [
-    'Bike, swim, elliptical or brisk uphill walk — aerobic effort without the impact.',
+    'Bike, swim, elliptical or brisk uphill walk: aerobic effort without the impact.',
   ],
   race: [
     'Trust the training. Start conservatively, execute your fueling plan, and finish strong.',
@@ -208,7 +208,7 @@ function intervalRun(date, km, weekIdx) {
   const reps = clamp(Math.round(km * 0.55 / 1), 4, 6);
   return wk(date, 'intervals', 'VO2max intervals', km, null, {
     warmup: '2 km easy + 4 strides',
-    main: `${reps} × 3 min at interval pace, 2–3 min jog recovery`,
+    main: `${reps} × 3 min at interval pace, 2-3 min jog recovery`,
     cooldown: '1.5 km easy jog',
   }, 'interval', tip('intervals', weekIdx));
 }
@@ -254,7 +254,7 @@ function ultraLongRun(date, min, weekIdx, back2back) {
   const title = back2back ? 'Back-to-back long run' : 'Long run (time on feet)';
   return wk(date, 'long', title, null, min, {
     warmup: null,
-    main: `${fmtMin(min)} on feet at easy effort (RPE 3–4). Power-hike climbs, run the rest. Practice race fueling.`,
+    main: `${fmtMin(min)} on feet at easy effort (RPE 3-4). Power-hike climbs, run the rest. Practice race fueling.`,
     cooldown: null,
   }, null, tip('ultralong', weekIdx));
 }
@@ -269,8 +269,8 @@ function xtrainDay(date, min, weekIdx) {
 
 function raceDayWorkout(date, goal) {
   const g = GOALS[goal];
-  return wk(date, 'race', `Race day — ${g.label}`, g.distKm, null, {
-    warmup: g.ultra ? 'Easy 5–10 min walk/jog, well before the start' : '10–15 min easy jog + 4 strides',
+  return wk(date, 'race', `Race day: ${g.label}`, g.distKm, null, {
+    warmup: g.ultra ? 'Easy 5-10 min walk/jog, well before the start' : '10-15 min easy jog + 4 strides',
     main: g.ultra
       ? 'Start easier than feels right, hike climbs early, fuel from the first hour.'
       : 'Even or slightly negative splits at goal pace.',
