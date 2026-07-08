@@ -25,8 +25,13 @@ export function renderSettings(container, refresh, restartOnboarding) {
   const g = GOALS[profile.goal];
 
   container.innerHTML = `
-    <h1 class="screen-title">Settings</h1>
-    <p class="screen-sub">Your plan adapts when anything here changes.</p>
+    <header class="mast">
+      <div class="mast-top">
+        <span class="eyebrow">Preferences</span>
+      </div>
+      <h1 class="screen-title">Settings</h1>
+      <p class="screen-sub">Your plan adapts when anything here changes.</p>
+    </header>
 
     <div class="card">
       <h3 style="margin-bottom:10px">Units</h3>
