@@ -23,7 +23,13 @@ export function renderWeek(container, refresh) {
   const doneKm = planned.filter((w) => w.status === 'done').reduce((s, w) => s + (w.log?.distKm || 0), 0);
 
   let html = `
-    <h1 class="screen-title">Week</h1>
+    <header class="mast">
+      <div class="mast-top">
+        <span class="eyebrow">Your schedule</span>
+        ${week ? `<span class="mast-meta num">${weekNo} / ${plan.weeks.length}</span>` : ''}
+      </div>
+      <h1 class="screen-title">Week</h1>
+    </header>
     <div class="week-nav">
       <button class="btn" id="wk-prev" aria-label="Previous week">‹</button>
       <div class="label">

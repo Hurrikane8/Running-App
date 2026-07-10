@@ -80,14 +80,19 @@ export function fmtTime(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-// pace stored as sec/km → "m:ss /km" or "/mi"
-export function fmtPace(secPerKm, units) {
+// pace stored as sec/km → "m:ss" (no unit suffix, for composing ranges)
+function fmtPaceNum(secPerKm, units) {
   const spu = units === 'mi' ? secPerKm * KM_PER_MI : secPerKm;
   const m = Math.floor(spu / 60);
   const s = Math.round(spu % 60);
   const ss = s === 60 ? 0 : s;
   const mm = s === 60 ? m + 1 : m;
-  return `${mm}:${String(ss).padStart(2, '0')} /${units}`;
+  return `${mm}:${String(ss).padStart(2, '0')}`;
+}
+
+// pace stored as sec/km → "m:ss /km" or "/mi"
+export function fmtPace(secPerKm, units) {
+  return `${fmtPaceNum(secPerKm, units)} /${units}`;
 }
 
 // treadmill speed: mph = 3600 / (sec/km · km/mi); 5:00 /km → 7.5 mph
@@ -104,6 +109,14 @@ export function fmtSpeedMph(secPerKm) {
 export function fmtPaceDisplay(secPerKm, settings) {
   if (settings.paceDisplay === 'treadmill') return fmtSpeedMph(secPerKm);
   return fmtPace(secPerKm, settings.units);
+}
+
+// [slowSecPerKm, fastSecPerKm] → "6:42-5:57 /km" (or "6.2-7.5 mph" on treadmill)
+export function fmtPaceRangeDisplay([slow, fast], settings) {
+  if (settings.paceDisplay === 'treadmill') {
+    return `${paceToMph(slow).toFixed(1)}-${paceToMph(fast).toFixed(1)} mph`;
+  }
+  return `${fmtPaceNum(slow, settings.units)}-${fmtPaceNum(fast, settings.units)} /${settings.units}`;
 }
 
 export function roundHalf(x) {

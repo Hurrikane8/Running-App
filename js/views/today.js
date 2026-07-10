@@ -16,17 +16,28 @@ export function renderToday(container, refresh) {
   const evidence = { plan, extraLogs: state.extraLogs };
 
   let html = `
-    <h1 class="screen-title">Today</h1>
-    <p class="screen-sub">${fmtDateLong(today)}${week ? ` · Week ${week.idx + 1} · <span class="phase-chip">${week.deload ? 'recovery week' : week.phase}</span>` : ''}</p>
+    <header class="mast">
+      <div class="mast-top">
+        <span class="eyebrow">${fmtDateLong(today)}</span>
+        ${week ? `<span class="mast-meta">Wk ${week.idx + 1} · <span class="phase-chip">${week.deload ? 'recovery' : week.phase}</span></span>` : ''}
+      </div>
+      <h1 class="screen-title">Today</h1>
+    </header>
   `;
 
-  // Countdown / goal strip
+  // Countdown / goal strip — wide accent readout
   if (plan?.raceDate && diffDays(today, plan.raceDate) >= 0) {
     const days = diffDays(today, plan.raceDate);
     const pred = goalPrediction(profile, plan, state.extraLogs);
-    html += `<div class="week-summary">
-      <div class="stat-tile"><div class="v">${days}</div><div class="k">days to race</div></div>
-      ${pred && !g.ultra ? `<div class="stat-tile"><div class="v">${fmtTime(pred)}</div><div class="k">predicted ${esc(g.label)}</div></div>` : ''}
+    html += `<div class="race-strip">
+      <div>
+        <div class="rs-days">${days}</div>
+        <div class="rs-label">days to ${esc(g.label)}</div>
+      </div>
+      ${pred && !g.ultra ? `<div class="rs-right">
+        <div class="rs-pred">${fmtTime(pred)}</div>
+        <div class="rs-label">projected finish</div>
+      </div>` : ''}
     </div>`;
   }
 
@@ -53,8 +64,8 @@ export function renderToday(container, refresh) {
   }
 
   for (const w of todays) {
-    html += `<div class="card today-hero">
-      <div style="display:flex; justify-content:space-between; align-items:center">
+    html += `<div class="card today-hero spine" data-wt="${w.type}" style="--spine-color: var(--wt-${w.type})">
+      <div class="session-head">
         <span class="today-date">Today's session</span>
         ${chipFor(w)}
       </div>

@@ -78,8 +78,13 @@ export function renderProgress(container) {
   const biggestWeek = [...weekTotals.entries()].sort((a, b) => b[1] - a[1])[0] || null;
 
   container.innerHTML = `
-    <h1 class="screen-title">Progress</h1>
-    <p class="screen-sub">${runs.length} run${runs.length === 1 ? '' : 's'} logged</p>
+    <header class="mast">
+      <div class="mast-top">
+        <span class="eyebrow">Training log</span>
+        <span class="mast-meta num">${runs.length} run${runs.length === 1 ? '' : 's'}</span>
+      </div>
+      <h1 class="screen-title">Progress</h1>
+    </header>
 
     <div class="week-summary">
       <div class="stat-tile"><div class="v">${fmtDist(thisWeekKm, units, 0)}</div><div class="k">this week</div></div>

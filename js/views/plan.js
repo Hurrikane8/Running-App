@@ -32,9 +32,9 @@ export function renderPlan(container) {
         </div>`;
       }
       hero = `
-        <div class="card today-hero" style="text-align:center">
+        <div class="card today-hero spine">
           <div class="today-date">Projected ${esc(g.label)} finish</div>
-          <div class="today-title" style="font-size:44px; font-variant-numeric:tabular-nums">${fmtTime(proj.projected)}</div>
+          <div class="today-title" style="font-size:46px; font-variant-numeric:tabular-nums; margin-top:6px">${fmtTime(proj.projected)}</div>
           ${goalLine}
           <p class="hint" style="margin-top:4px">
             At today's fitness: ${fmtTime(proj.current)} · projection assumes the plan is
@@ -45,19 +45,19 @@ export function renderPlan(container) {
         </div>`;
     } else {
       hero = `
-        <div class="card today-hero" style="text-align:center">
+        <div class="card today-hero spine">
           <div class="today-date">Estimated ${esc(g.label)} (today's fitness)</div>
-          <div class="today-title" style="font-size:44px; font-variant-numeric:tabular-nums">${fmtTime(proj.current)}</div>
-          <p class="hint" style="margin-top:2px">Race date has passed. Set a new goal in Settings for a fresh projection.</p>
+          <div class="today-title" style="font-size:46px; font-variant-numeric:tabular-nums; margin-top:6px">${fmtTime(proj.current)}</div>
+          <p class="hint" style="margin-top:6px">Race date has passed. Set a new goal in Settings for a fresh projection.</p>
           ${evidenceLine}
         </div>`;
     }
   } else {
     hero = `
-      <div class="card today-hero" style="text-align:center">
+      <div class="card today-hero spine">
         <div class="today-date">Estimated 5K at today's fitness</div>
-        <div class="today-title" style="font-size:44px; font-variant-numeric:tabular-nums">${fmtTime(estimateRaceTime(vdotForDate(profile, today, plan, state.extraLogs), 5))}</div>
-        <p class="hint" style="margin-top:2px">No race on the calendar. Set one in Settings to get a race-day projection.</p>
+        <div class="today-title" style="font-size:46px; font-variant-numeric:tabular-nums; margin-top:6px">${fmtTime(estimateRaceTime(vdotForDate(profile, today, plan, state.extraLogs), 5))}</div>
+        <p class="hint" style="margin-top:6px">No race on the calendar. Set one in Settings to get a race-day projection.</p>
         ${evidenceLine}
       </div>`;
   }
@@ -86,8 +86,13 @@ export function renderPlan(container) {
   }).join('');
 
   container.innerHTML = `
-    <h1 class="screen-title">Plan</h1>
-    <p class="screen-sub">${g.label}${plan.raceDate ? ` · ${esc(plan.raceDate)}` : ''} · ${plan.weeks.length} weeks</p>
+    <header class="mast">
+      <div class="mast-top">
+        <span class="eyebrow">${esc(g.label)}${plan.raceDate ? ` · ${esc(plan.raceDate)}` : ''}</span>
+        <span class="mast-meta num">${plan.weeks.length} wk</span>
+      </div>
+      <h1 class="screen-title">Plan</h1>
+    </header>
     ${hero}
     ${stats}
     <div class="card">

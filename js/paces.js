@@ -36,10 +36,19 @@ export const INTENSITY_FRACTIONS = {
   easyLo: 0.62, easyHi: 0.72, marathon: 0.80, threshold: 0.87, interval: 0.985, rep: 1.07,
 };
 
-// Training paces (sec/km) at Daniels' intensity fractions.
+// Recovery isn't a fixed VO2max fraction like the other zones — it's defined
+// relative to easy pace: slower by a fixed seconds-per-km offset, per
+// common coaching guidance ("recovery pace, or easy pace and slower").
+const RECOVERY_OFFSET_SEC = [30, 45]; // [fast end, slow end] slower than easy pace
+
+// Training paces (sec/km) at Daniels' intensity fractions. easy/recovery are
+// [slow, fast] bands; the rest are single targets.
 export function trainingPaces(vdot) {
+  const easy = [paceAtFraction(vdot, INTENSITY_FRACTIONS.easyLo), paceAtFraction(vdot, INTENSITY_FRACTIONS.easyHi)];
+  const easyMid = (easy[0] + easy[1]) / 2;
   return {
-    easy: [paceAtFraction(vdot, INTENSITY_FRACTIONS.easyLo), paceAtFraction(vdot, INTENSITY_FRACTIONS.easyHi)],
+    easy,
+    recovery: [easyMid + RECOVERY_OFFSET_SEC[1], easyMid + RECOVERY_OFFSET_SEC[0]],
     marathon: paceAtFraction(vdot, INTENSITY_FRACTIONS.marathon),
     threshold: paceAtFraction(vdot, INTENSITY_FRACTIONS.threshold),
     interval: paceAtFraction(vdot, INTENSITY_FRACTIONS.interval),
