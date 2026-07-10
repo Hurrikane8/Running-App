@@ -2,7 +2,7 @@
 
 import { loadState, saveState } from './storage.js';
 import { pacesForDate } from './plangen.js';
-import { fmtDist, fmtPaceDisplay, fmtTime, esc, kmToUnit, unitToKm, todayStr } from './util.js';
+import { fmtDist, fmtPaceDisplay, fmtPaceRangeDisplay, fmtTime, esc, kmToUnit, unitToKm, todayStr } from './util.js';
 
 export const TYPE_LABEL = {
   easy: 'Easy', recovery: 'Recovery', long: 'Long run', tempo: 'Threshold',
@@ -55,9 +55,9 @@ export function targetLine(w, profile, settings, evidence = {}) {
 export function paceTarget(w, profile, settings, evidence = {}) {
   if (!w.paceKey || !profile) return w.type === 'long' && !w.paceKey ? 'easy effort (RPE 3-4)' : null;
   const p = pacesForDate(profile, w.date, evidence.plan, evidence.extraLogs); // paces reflect logged performance + projected fitness
-  const easyPace = (p.easy[0] + p.easy[1]) / 2; // a single target, not the full prescribed band
   switch (w.paceKey) {
-    case 'easy': return `easy ${fmtPaceDisplay(easyPace, settings)}`;
+    case 'easy': return `easy ${fmtPaceRangeDisplay(p.easy, settings)}`;
+    case 'recovery': return `recovery ${fmtPaceRangeDisplay(p.recovery, settings)}`;
     case 'marathon': return `goal pace ${fmtPaceDisplay(p.marathon, settings)}`;
     case 'threshold': return `threshold ${fmtPaceDisplay(p.threshold, settings)}`;
     case 'interval': return `interval ${fmtPaceDisplay(p.interval, settings)}`;
@@ -78,9 +78,9 @@ export function structureRows(w, profile, settings, evidence = {}) {
 function decoratePaces(text, w, profile, settings, evidence = {}) {
   if (!profile) return esc(text);
   const p = pacesForDate(profile, w.date, evidence.plan, evidence.extraLogs);
-  const easyPace = (p.easy[0] + p.easy[1]) / 2;
   const map = {
-    'easy pace': `easy pace <span class="pace-pill">${fmtPaceDisplay(easyPace, settings)}</span>`,
+    'easy pace': `easy pace <span class="pace-pill">${fmtPaceRangeDisplay(p.easy, settings)}</span>`,
+    'recovery pace': `recovery pace <span class="pace-pill">${fmtPaceRangeDisplay(p.recovery, settings)}</span>`,
     'threshold pace': `threshold pace <span class="pace-pill">${fmtPaceDisplay(p.threshold, settings)}</span>`,
     'interval pace': `interval pace <span class="pace-pill">${fmtPaceDisplay(p.interval, settings)}</span>`,
     'repetition pace': `repetition pace <span class="pace-pill">${fmtPaceDisplay(p.rep, settings)}</span>`,

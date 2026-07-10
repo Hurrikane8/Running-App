@@ -178,9 +178,9 @@ function easyRun(date, km, weekIdx, type = 'easy') {
   const title = type === 'recovery' ? 'Recovery run' : 'Easy run';
   return wk(date, type, title, km, null, {
     warmup: null,
-    main: `${type === 'recovery' ? 'Very relaxed' : 'Relaxed, conversational'} running at easy pace`,
+    main: type === 'recovery' ? 'Very relaxed running at recovery pace' : 'Relaxed, conversational running at easy pace',
     cooldown: null,
-  }, 'easy', tip(type, weekIdx));
+  }, type === 'recovery' ? 'recovery' : 'easy', tip(type, weekIdx));
 }
 
 function stridesRun(date, km, weekIdx) {
@@ -395,12 +395,14 @@ function buildWeek(profile, weekIdx, weekStart, volKm, phase, totalWeeks, raceDa
 
   let qUsed = 0;
   for (const d of days) {
-    if (skipDays.has(d)) continue; // volume too low to feed this day — rest
     const date = addDays(weekStart, d);
+    // Race day is always scheduled, even if the volume budget would
+    // otherwise have turned this into a rest day — check before skipDays.
     if (raceDate && date === raceDate && raceThisWeek) {
       workouts.push(raceDayWorkout(date, profile.goal));
       continue;
     }
+    if (skipDays.has(d)) continue; // volume too low to feed this day — rest
     if (raceThisWeek && diffDays(date, raceDate) < 0) continue; // nothing after race
     if (raceThisWeek && diffDays(date, raceDate) <= 2 && diffDays(date, raceDate) > 0) {
       // day or two before race: short shakeout
