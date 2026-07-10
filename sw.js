@@ -1,5 +1,5 @@
 // Cache-first service worker for the app shell. Bump VERSION on deploys.
-const VERSION = 'stride-v8';
+const VERSION = 'stride-v9';
 const SHELL = [
   './',
   './index.html',

@@ -396,6 +396,10 @@ h1.screen-title {
   -webkit-appearance: none; appearance: none;
   display: block; min-width: 0; max-width: 100%;
   min-height: 49px; text-align: left;
+  /* the page-wide pan-y touch-action lock (zoom prevention) interferes with
+     the native date picker's own gesture handling, causing it to pop open
+     and immediately dismiss — restore normal touch behavior for this control */
+  touch-action: manipulation;
 }
 .field-row { display: flex; gap: 10px; }
 .field-row .field { flex: 1; }
