@@ -4,7 +4,7 @@
 
 const KEY = 'stride.state.v1'; // storage key is stable; `version` tracks the schema
 
-export const STATE_VERSION = 4;
+export const STATE_VERSION = 5;
 
 const DEFAULT_STATE = {
   version: STATE_VERSION,
@@ -49,6 +49,20 @@ const MIGRATIONS = {
         s.profile.vdotDate = s.plan?.createdAt || new Date().toISOString().slice(0, 10);
       }
       s.profile.goalTimeSec ??= null;
+    }
+    return s;
+  },
+  // v4 → v5: recovery runs used to share the 'easy' paceKey (and so showed
+  // the same pace target as easy runs); they now have their own slower
+  // pace zone. Repair already-generated plans so existing recovery
+  // workouts pick up the new target instead of staying stuck on 'easy'.
+  4: (s) => {
+    if (s.plan?.weeks) {
+      for (const w of s.plan.weeks) {
+        for (const x of w.workouts) {
+          if (x.type === 'recovery' && x.paceKey === 'easy') x.paceKey = 'recovery';
+        }
+      }
     }
     return s;
   },
