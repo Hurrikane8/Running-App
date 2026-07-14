@@ -1,7 +1,7 @@
 // Shared workout presentation helpers + the log-workout modal.
 
 import { loadState, saveState } from './storage.js';
-import { pacesForDate } from './plangen.js';
+import { pacesForDate, racePaceForDate } from './plangen.js';
 import { fmtDist, fmtPaceDisplay, fmtPaceRangeDisplay, fmtTime, esc, kmToUnit, unitToKm, todayStr } from './util.js';
 
 export const TYPE_LABEL = {
@@ -54,6 +54,12 @@ export function targetLine(w, profile, settings, evidence = {}) {
 
 export function paceTarget(w, profile, settings, evidence = {}) {
   if (!w.paceKey || !profile) return w.type === 'long' && !w.paceKey ? 'easy effort (RPE 3-4)' : null;
+  // Race-day pace is distance-aware (matches "Projected finish"), not one of
+  // the fixed intensity-fraction zones below — resolve it separately.
+  if (w.paceKey === 'racepace') {
+    const pace = racePaceForDate(profile, w.date, w.distKm, evidence.plan, evidence.extraLogs);
+    return `race pace ${fmtPaceDisplay(pace, settings)}`;
+  }
   const p = pacesForDate(profile, w.date, evidence.plan, evidence.extraLogs); // paces reflect logged performance + projected fitness
   switch (w.paceKey) {
     case 'easy': return `easy ${fmtPaceRangeDisplay(p.easy, settings)}`;
@@ -88,6 +94,12 @@ function decoratePaces(text, w, profile, settings, evidence = {}) {
     'marathon pace': `marathon pace <span class="pace-pill">${fmtPaceDisplay(p.marathon, settings)}</span>`,
     'goal pace': `goal pace <span class="pace-pill">${fmtPaceDisplay(p.marathon, settings)}</span>`,
   };
+  // Race day's own "race pace" — distance-aware (matches Projected finish),
+  // distinct from the marathon-effort "goal pace" used by mpace training runs.
+  if (w.paceKey === 'racepace' && w.distKm) {
+    const racePace = racePaceForDate(profile, w.date, w.distKm, evidence.plan, evidence.extraLogs);
+    map['race pace'] = `race pace <span class="pace-pill">${fmtPaceDisplay(racePace, settings)}</span>`;
+  }
   let out = esc(text);
   for (const [k, v] of Object.entries(map)) out = out.replace(new RegExp(k, 'i'), v);
   return out;

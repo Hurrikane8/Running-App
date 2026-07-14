@@ -273,9 +273,11 @@ function raceDayWorkout(date, goal) {
     warmup: g.ultra ? 'Easy 5-10 min walk/jog, well before the start' : '10-15 min easy jog + 4 strides',
     main: g.ultra
       ? 'Start easier than feels right, hike climbs early, fuel from the first hour.'
-      : 'Even or slightly negative splits at goal pace.',
+      : 'Even or slightly negative splits at race pace.',
     cooldown: 'Walk, eat, celebrate.',
-  }, g.ultra ? null : 'marathon', tip('race', 0));
+  // 'racepace' (not the fixed marathon-effort zone) so this always matches
+  // the "Projected finish" figure — see racePaceForDate.
+  }, g.ultra ? null : 'racepace', tip('race', 0));
 }
 
 // ---- weekly assembly ----
@@ -654,6 +656,15 @@ export function projectedRaceTime(profile, plan, extraLogs = []) {
   }
   const vRace = vdotForDate(profile, raceDate, plan, extraLogs);
   return { current, projected: estimateRaceTime(vRace, g.distKm), gain: vRace - vToday };
+}
+
+// Race-day pace target (sec/km): the same distance-aware projection used for
+// "Projected finish" (estimateRaceTime, not the fixed marathon-effort zone),
+// so the pace on the race-day workout always agrees with the projected time
+// divided by distance — a 5K race pace, not a marathon-intensity pace.
+export function racePaceForDate(profile, dateStr, distKm, plan = null, extraLogs = []) {
+  const vdot = vdotForDate(profile, dateStr, plan, extraLogs);
+  return estimateRaceTime(vdot, distKm) / distKm;
 }
 
 // Regenerate future weeks (from the current week) after a profile change,
