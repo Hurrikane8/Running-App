@@ -1,7 +1,7 @@
 // Shared workout presentation helpers + the log-workout modal.
 
 import { loadState, saveState } from './storage.js';
-import { pacesForDate, racePaceForDate } from './plangen.js';
+import { pacesForDate, racePaceForDate, GOALS } from './plangen.js';
 import { fmtDist, fmtPaceDisplay, fmtPaceRangeDisplay, fmtTime, esc, kmToUnit, unitToKm, todayStr } from './util.js';
 
 export const TYPE_LABEL = {
@@ -90,12 +90,25 @@ function decoratePaces(text, w, profile, settings, evidence = {}) {
     'threshold pace': `threshold pace <span class="pace-pill">${fmtPaceDisplay(p.threshold, settings)}</span>`,
     'interval pace': `interval pace <span class="pace-pill">${fmtPaceDisplay(p.interval, settings)}</span>`,
     'repetition pace': `repetition pace <span class="pace-pill">${fmtPaceDisplay(p.rep, settings)}</span>`,
+    // Genuinely marathon-effort (fixed 80% VO2max training zone) — only ever
+    // appears in mpace sessions and marathon-goal long runs, both of which
+    // are scheduled exclusively for goal === 'marathon' plans, where
+    // marathon effort really is the goal-race effort.
     'marathon (goal) pace': `marathon (goal) pace <span class="pace-pill">${fmtPaceDisplay(p.marathon, settings)}</span>`,
     'marathon pace': `marathon pace <span class="pace-pill">${fmtPaceDisplay(p.marathon, settings)}</span>`,
-    'goal pace': `goal pace <span class="pace-pill">${fmtPaceDisplay(p.marathon, settings)}</span>`,
   };
-  // Race day's own "race pace" — distance-aware (matches Projected finish),
-  // distinct from the marathon-effort "goal pace" used by mpace training runs.
+  // "goal pace" (used by the half-marathon long run's peak-phase tail
+  // segment) means "your actual goal race's pace" — distance-aware, same
+  // projection as "Projected finish" and race day, not the fixed marathon
+  // training zone (a half marathon is not run at marathon effort).
+  if (/goal pace/i.test(text)) {
+    const goalDistKm = GOALS[profile.goal]?.distKm;
+    if (goalDistKm) {
+      const goalPace = racePaceForDate(profile, w.date, goalDistKm, evidence.plan, evidence.extraLogs);
+      map['goal pace'] = `goal pace <span class="pace-pill">${fmtPaceDisplay(goalPace, settings)}</span>`;
+    }
+  }
+  // Race day's own "race pace" — distance-aware (matches Projected finish).
   if (w.paceKey === 'racepace' && w.distKm) {
     const racePace = racePaceForDate(profile, w.date, w.distKm, evidence.plan, evidence.extraLogs);
     map['race pace'] = `race pace <span class="pace-pill">${fmtPaceDisplay(racePace, settings)}</span>`;
