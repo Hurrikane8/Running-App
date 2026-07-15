@@ -53,7 +53,7 @@ export function renderSettings(container, refresh, restartOnboarding) {
       ${profile.raceDate ? `<div class="pr-row"><span class="k">Race date</span><span class="v">${esc(profile.raceDate)}</span></div>` : ''}
       <div class="pr-row"><span class="k">Run days</span><span class="v">${profile.daysPerWeek} / week</span></div>
       <div class="pr-row"><span class="k">Experience</span><span class="v" style="text-transform:capitalize">${profile.experience}</span></div>
-      <div class="btn-row"><button class="btn" id="edit-goal">Change goal or schedule</button></div>
+      <div class="btn-row"><button class="btn secondary" id="edit-goal">Change goal or schedule</button></div>
     </div>
 
     <div class="card">
@@ -66,15 +66,15 @@ export function renderSettings(container, refresh, restartOnboarding) {
       ${fb.nPoints > 0
         ? `<p class="hint">Sharpened using ${fb.nPoints} recent logged effort${fb.nPoints === 1 ? '' : 's'} (in addition to your entered baseline of ${profile.vdot}).</p>`
         : '<p class="hint">Log a few tempo, interval, or race efforts and paces will sharpen to match how you actually run.</p>'}
-      <div class="btn-row"><button class="btn" id="edit-fitness">Update fitness (new race / time trial)</button></div>
+      <div class="btn-row"><button class="btn secondary" id="edit-fitness">Update fitness (new race / time trial)</button></div>
     </div>
 
     <div class="card">
       <h3 style="margin-bottom:6px">Data</h3>
       <p class="hint" style="margin-bottom:12px">Your plan and every logged workout live only in this browser. Export a JSON backup regularly. It restores everything if local storage is ever cleared.</p>
       <div class="btn-row" style="margin-top:0">
-        <button class="btn" id="export-data">Export data</button>
-        <button class="btn" id="import-data">Import data</button>
+        <button class="btn tertiary" id="export-data">Export data</button>
+        <button class="btn tertiary" id="import-data">Import data</button>
       </div>
       <div class="btn-row"><button class="btn ghost danger" id="reset-all">Erase everything &amp; start over</button></div>
     </div>
