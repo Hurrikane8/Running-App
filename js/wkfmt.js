@@ -2,6 +2,7 @@
 
 import { loadState, saveState } from './storage.js';
 import { pacesForDate, racePaceForDate, GOALS } from './plangen.js';
+import { targetHR } from './hr.js';
 import { fmtDist, fmtPaceDisplay, fmtPaceRangeDisplay, fmtTime, esc, kmToUnit, unitToKm, todayStr } from './util.js';
 
 export const TYPE_LABEL = {
@@ -42,13 +43,18 @@ export const TYPE_INFO = [
 // evidence = { plan, extraLogs } — logged workouts that let pace targets
 // reflect actual performance, not just the calendar-based assumption.
 
-// "8 km · easy pace 6:42 /km" (or "easy 5.6 mph" in treadmill mode)
+// "8 km · easy pace 6:42 /km · HR 128-145" (or "easy 5.6 mph" in treadmill mode)
 export function targetLine(w, profile, settings, evidence = {}) {
   const parts = [];
   if (w.distKm != null) parts.push(fmtDist(w.distKm, settings.units));
   if (w.durMin != null) parts.push(w.durMin >= 60 ? `${Math.floor(w.durMin / 60)} h ${w.durMin % 60 ? (w.durMin % 60) + ' min' : ''}`.trim() : `${w.durMin} min`);
   const pace = paceTarget(w, profile, settings, evidence);
   if (pace) parts.push(pace);
+  // HR_ZONE_FRACTIONS keys line up 1:1 with paceKey values (easy, recovery,
+  // marathon, threshold, interval); 'rep' and 'racepace' intentionally have
+  // no zone and targetHR() returns null for them.
+  const hr = profile ? targetHR(profile, w.paceKey) : null;
+  if (hr) parts.push(`HR ${hr[0]}-${hr[1]}`);
   return parts.join(' · ');
 }
 

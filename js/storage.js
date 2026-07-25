@@ -4,7 +4,7 @@
 
 const KEY = 'stride.state.v1'; // storage key is stable; `version` tracks the schema
 
-export const STATE_VERSION = 6;
+export const STATE_VERSION = 7;
 
 const DEFAULT_STATE = {
   version: STATE_VERSION,
@@ -77,6 +77,17 @@ const MIGRATIONS = {
           if (x.type === 'race' && x.paceKey === 'marathon') x.paceKey = 'racepace';
         }
       }
+    }
+    return s;
+  },
+  // v6 → v7: profile gains optional heart-rate fields (age, restingHR,
+  // maxHR override) for Karvonen-based HR targets. All default to null —
+  // no HR targets show until the user opts in from Settings.
+  6: (s) => {
+    if (s.profile) {
+      s.profile.age ??= null;
+      s.profile.restingHR ??= null;
+      s.profile.maxHR ??= null;
     }
     return s;
   },
