@@ -695,8 +695,14 @@ export function replanFrom(plan, profile, fromDateStr) {
       ).concat(done).sort((a, b) => a.date.localeCompare(b.date));
     }
   }
-  fresh.weeks = past.concat(fresh.weeks.map((w, i) => ({ ...w })));
+  // Renumber idx contiguously across the kept past weeks + the freshly
+  // generated ones. Without this the fresh weeks keep their own 0-based idx,
+  // so a mid-plan change made the UI show "Wk 1,2,3,1,2,3,4…" (duplicate week
+  // numbers). Each week's phase/deload were already computed and are left as
+  // they are — only the display index is corrected.
+  fresh.weeks = past.concat(fresh.weeks).map((w, i) => ({ ...w, idx: i }));
   fresh.startDate = past.length ? past[0].start : fresh.startDate;
+  fresh.totalWeeks = fresh.weeks.length;
   return fresh;
 }
 
