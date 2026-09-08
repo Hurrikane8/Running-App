@@ -64,6 +64,14 @@ function phaseFor(weekIdx, totalWeeks, taperWeeks, ultra) {
   return 'peak';
 }
 
+// PEAK_KM is tuned for a 5-day/week schedule. More run days safely absorb
+// more total volume (shorter, more frequent runs vs. fewer big ones) and
+// fewer days absorb less, so scale it +/-7%/day around that baseline
+// instead of giving every day-count for a goal the exact same ceiling —
+// clamped so very low/high day counts stay in a sane range.
+const PEAK_DAYS_BASELINE = 5;
+const PEAK_DAY_FACTOR = 0.07;
+
 // Weekly volume series: classic 3:1 step-loading. Full-load weeks grow ≤10%
 // (6–8% with injuries); every 4th week is a planned deload at ~72% of the
 // current full load. The growth chain advances only on full-load weeks, so the
@@ -72,11 +80,14 @@ function phaseFor(weekIdx, totalWeeks, taperWeeks, ultra) {
 // baseline. Taper multipliers at the end.
 function volumeSeries(profile, totalWeeks, taperWeeks) {
   const idx = EXP_IDX[profile.experience];
-  // Weekly volume is capped by what the schedule can actually absorb: the
-  // long run at its cap plus each remaining day at an easy run that stays
-  // shorter than the long run. Without this, short-race plans with high
-  // entered mileage dump leftover volume into oversized "easy" runs.
-  let peakCap = PEAK_KM[profile.goal][idx];
+  const dayFactor = clamp(1 + (profile.daysPerWeek - PEAK_DAYS_BASELINE) * PEAK_DAY_FACTOR, 0.8, 1.35);
+  // Weekly volume is capped two ways, whichever is lower: PEAK_KM (scaled
+  // for day count, above) is the goal-appropriate ceiling; the schedule-
+  // absorption cap below is the long run at its cap plus each remaining day
+  // at an easy run that stays shorter than the long run — without it,
+  // short-race plans with high entered mileage or few run days dump
+  // leftover volume into oversized "easy" runs.
+  let peakCap = Math.round(PEAK_KM[profile.goal][idx] * dayFactor);
   if (!GOALS[profile.goal].ultra) {
     const longCap = LONG_CAP_KM[profile.goal][idx];
     const easyCap = Math.min(16, longCap * 0.85);
@@ -273,9 +284,11 @@ function raceDayWorkout(date, goal) {
     warmup: g.ultra ? 'Easy 5-10 min walk/jog, well before the start' : '10-15 min easy jog + 4 strides',
     main: g.ultra
       ? 'Start easier than feels right, hike climbs early, fuel from the first hour.'
-      : 'Even or slightly negative splits at goal pace.',
+      : 'Even or slightly negative splits at race pace.',
     cooldown: 'Walk, eat, celebrate.',
-  }, g.ultra ? null : 'marathon', tip('race', 0));
+  // 'racepace' (not the fixed marathon-effort zone) so this always matches
+  // the "Projected finish" figure — see racePaceForDate.
+  }, g.ultra ? null : 'racepace', tip('race', 0));
 }
 
 // ---- weekly assembly ----
@@ -656,6 +669,15 @@ export function projectedRaceTime(profile, plan, extraLogs = []) {
   return { current, projected: estimateRaceTime(vRace, g.distKm), gain: vRace - vToday };
 }
 
+// Race-day pace target (sec/km): the same distance-aware projection used for
+// "Projected finish" (estimateRaceTime, not the fixed marathon-effort zone),
+// so the pace on the race-day workout always agrees with the projected time
+// divided by distance — a 5K race pace, not a marathon-intensity pace.
+export function racePaceForDate(profile, dateStr, distKm, plan = null, extraLogs = []) {
+  const vdot = vdotForDate(profile, dateStr, plan, extraLogs);
+  return estimateRaceTime(vdot, distKm) / distKm;
+}
+
 // Regenerate future weeks (from the current week) after a profile change,
 // keeping past weeks and their logs intact.
 export function replanFrom(plan, profile, fromDateStr) {
@@ -673,8 +695,14 @@ export function replanFrom(plan, profile, fromDateStr) {
       ).concat(done).sort((a, b) => a.date.localeCompare(b.date));
     }
   }
-  fresh.weeks = past.concat(fresh.weeks.map((w, i) => ({ ...w })));
+  // Renumber idx contiguously across the kept past weeks + the freshly
+  // generated ones. Without this the fresh weeks keep their own 0-based idx,
+  // so a mid-plan change made the UI show "Wk 1,2,3,1,2,3,4…" (duplicate week
+  // numbers). Each week's phase/deload were already computed and are left as
+  // they are — only the display index is corrected.
+  fresh.weeks = past.concat(fresh.weeks).map((w, i) => ({ ...w, idx: i }));
   fresh.startDate = past.length ? past[0].start : fresh.startDate;
+  fresh.totalWeeks = fresh.weeks.length;
   return fresh;
 }
 

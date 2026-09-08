@@ -4,7 +4,7 @@
 
 const KEY = 'stride.state.v1'; // storage key is stable; `version` tracks the schema
 
-export const STATE_VERSION = 5;
+export const STATE_VERSION = 7;
 
 const DEFAULT_STATE = {
   version: STATE_VERSION,
@@ -63,6 +63,31 @@ const MIGRATIONS = {
           if (x.type === 'recovery' && x.paceKey === 'easy') x.paceKey = 'recovery';
         }
       }
+    }
+    return s;
+  },
+  // v5 → v6: race day used the fixed marathon-effort pace zone for every
+  // distance, so a 5K/10K/half's "goal pace" didn't match its "Projected
+  // finish" time at all (marathon effort is much slower than 5K race
+  // effort). Race day now gets its own distance-aware 'racepace'.
+  5: (s) => {
+    if (s.plan?.weeks) {
+      for (const w of s.plan.weeks) {
+        for (const x of w.workouts) {
+          if (x.type === 'race' && x.paceKey === 'marathon') x.paceKey = 'racepace';
+        }
+      }
+    }
+    return s;
+  },
+  // v6 → v7: profile gains optional heart-rate fields (age, restingHR,
+  // maxHR override) for Karvonen-based HR targets. All default to null —
+  // no HR targets show until the user opts in from Settings.
+  6: (s) => {
+    if (s.profile) {
+      s.profile.age ??= null;
+      s.profile.restingHR ??= null;
+      s.profile.maxHR ??= null;
     }
     return s;
   },

@@ -1,7 +1,8 @@
 // Shared workout presentation helpers + the log-workout modal.
 
 import { loadState, saveState } from './storage.js';
-import { pacesForDate } from './plangen.js';
+import { pacesForDate, racePaceForDate, GOALS } from './plangen.js';
+import { targetHR } from './hr.js';
 import { fmtDist, fmtPaceDisplay, fmtPaceRangeDisplay, fmtTime, esc, kmToUnit, unitToKm, todayStr } from './util.js';
 
 export const TYPE_LABEL = {
@@ -42,18 +43,29 @@ export const TYPE_INFO = [
 // evidence = { plan, extraLogs } — logged workouts that let pace targets
 // reflect actual performance, not just the calendar-based assumption.
 
-// "8 km · easy pace 6:42 /km" (or "easy 5.6 mph" in treadmill mode)
+// "8 km · easy pace 6:42 /km · HR 128-145" (or "easy 5.6 mph" in treadmill mode)
 export function targetLine(w, profile, settings, evidence = {}) {
   const parts = [];
   if (w.distKm != null) parts.push(fmtDist(w.distKm, settings.units));
   if (w.durMin != null) parts.push(w.durMin >= 60 ? `${Math.floor(w.durMin / 60)} h ${w.durMin % 60 ? (w.durMin % 60) + ' min' : ''}`.trim() : `${w.durMin} min`);
   const pace = paceTarget(w, profile, settings, evidence);
   if (pace) parts.push(pace);
+  // HR_ZONE_FRACTIONS keys line up 1:1 with paceKey values (easy, recovery,
+  // marathon, threshold, interval); 'rep' and 'racepace' intentionally have
+  // no zone and targetHR() returns null for them.
+  const hr = profile ? targetHR(profile, w.paceKey) : null;
+  if (hr) parts.push(`HR ${hr[0]}-${hr[1]}`);
   return parts.join(' · ');
 }
 
 export function paceTarget(w, profile, settings, evidence = {}) {
   if (!w.paceKey || !profile) return w.type === 'long' && !w.paceKey ? 'easy effort (RPE 3-4)' : null;
+  // Race-day pace is distance-aware (matches "Projected finish"), not one of
+  // the fixed intensity-fraction zones below — resolve it separately.
+  if (w.paceKey === 'racepace') {
+    const pace = racePaceForDate(profile, w.date, w.distKm, evidence.plan, evidence.extraLogs);
+    return `race pace ${fmtPaceDisplay(pace, settings)}`;
+  }
   const p = pacesForDate(profile, w.date, evidence.plan, evidence.extraLogs); // paces reflect logged performance + projected fitness
   switch (w.paceKey) {
     case 'easy': return `easy ${fmtPaceRangeDisplay(p.easy, settings)}`;
@@ -84,10 +96,29 @@ function decoratePaces(text, w, profile, settings, evidence = {}) {
     'threshold pace': `threshold pace <span class="pace-pill">${fmtPaceDisplay(p.threshold, settings)}</span>`,
     'interval pace': `interval pace <span class="pace-pill">${fmtPaceDisplay(p.interval, settings)}</span>`,
     'repetition pace': `repetition pace <span class="pace-pill">${fmtPaceDisplay(p.rep, settings)}</span>`,
+    // Genuinely marathon-effort (fixed 80% VO2max training zone) — only ever
+    // appears in mpace sessions and marathon-goal long runs, both of which
+    // are scheduled exclusively for goal === 'marathon' plans, where
+    // marathon effort really is the goal-race effort.
     'marathon (goal) pace': `marathon (goal) pace <span class="pace-pill">${fmtPaceDisplay(p.marathon, settings)}</span>`,
     'marathon pace': `marathon pace <span class="pace-pill">${fmtPaceDisplay(p.marathon, settings)}</span>`,
-    'goal pace': `goal pace <span class="pace-pill">${fmtPaceDisplay(p.marathon, settings)}</span>`,
   };
+  // "goal pace" (used by the half-marathon long run's peak-phase tail
+  // segment) means "your actual goal race's pace" — distance-aware, same
+  // projection as "Projected finish" and race day, not the fixed marathon
+  // training zone (a half marathon is not run at marathon effort).
+  if (/goal pace/i.test(text)) {
+    const goalDistKm = GOALS[profile.goal]?.distKm;
+    if (goalDistKm) {
+      const goalPace = racePaceForDate(profile, w.date, goalDistKm, evidence.plan, evidence.extraLogs);
+      map['goal pace'] = `goal pace <span class="pace-pill">${fmtPaceDisplay(goalPace, settings)}</span>`;
+    }
+  }
+  // Race day's own "race pace" — distance-aware (matches Projected finish).
+  if (w.paceKey === 'racepace' && w.distKm) {
+    const racePace = racePaceForDate(profile, w.date, w.distKm, evidence.plan, evidence.extraLogs);
+    map['race pace'] = `race pace <span class="pace-pill">${fmtPaceDisplay(racePace, settings)}</span>`;
+  }
   let out = esc(text);
   for (const [k, v] of Object.entries(map)) out = out.replace(new RegExp(k, 'i'), v);
   return out;

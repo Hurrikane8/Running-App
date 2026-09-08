@@ -4,8 +4,14 @@
 import { loadState, saveState, resetState, exportState, importState } from '../storage.js';
 import { GOALS, replanFrom, pacesForProfile, vdotBreakdown } from '../plangen.js';
 import { vdotFromRace } from '../paces.js';
+import { estimateMaxHR, resolveMaxHR, targetHR } from '../hr.js';
 import { todayStr, addDays, esc, fmtPaceDisplay, fmtPaceRangeDisplay, kmToUnit, unitToKm } from '../util.js';
 import { openModal, closeModal } from '../wkfmt.js';
+
+const HR_ZONES = [
+  ['recovery', 'Recovery'], ['easy', 'Easy'], ['marathon', 'Goal pace'],
+  ['threshold', 'Threshold'], ['interval', 'Interval'],
+];
 
 const RACE_INPUT_DISTS = [
   { key: '1mi', label: '1 mile', km: 1.609 },
@@ -53,7 +59,7 @@ export function renderSettings(container, refresh, restartOnboarding) {
       ${profile.raceDate ? `<div class="pr-row"><span class="k">Race date</span><span class="v">${esc(profile.raceDate)}</span></div>` : ''}
       <div class="pr-row"><span class="k">Run days</span><span class="v">${profile.daysPerWeek} / week</span></div>
       <div class="pr-row"><span class="k">Experience</span><span class="v" style="text-transform:capitalize">${profile.experience}</span></div>
-      <div class="btn-row"><button class="btn" id="edit-goal">Change goal or schedule</button></div>
+      <div class="btn-row"><button class="btn secondary" id="edit-goal">Change goal or schedule</button></div>
     </div>
 
     <div class="card">
@@ -66,15 +72,17 @@ export function renderSettings(container, refresh, restartOnboarding) {
       ${fb.nPoints > 0
         ? `<p class="hint">Sharpened using ${fb.nPoints} recent logged effort${fb.nPoints === 1 ? '' : 's'} (in addition to your entered baseline of ${profile.vdot}).</p>`
         : '<p class="hint">Log a few tempo, interval, or race efforts and paces will sharpen to match how you actually run.</p>'}
-      <div class="btn-row"><button class="btn" id="edit-fitness">Update fitness (new race / time trial)</button></div>
+      <div class="btn-row"><button class="btn secondary" id="edit-fitness">Update fitness (new race / time trial)</button></div>
     </div>
+
+    ${renderHeartRateCard(profile)}
 
     <div class="card">
       <h3 style="margin-bottom:6px">Data</h3>
       <p class="hint" style="margin-bottom:12px">Your plan and every logged workout live only in this browser. Export a JSON backup regularly. It restores everything if local storage is ever cleared.</p>
       <div class="btn-row" style="margin-top:0">
-        <button class="btn" id="export-data">Export data</button>
-        <button class="btn" id="import-data">Import data</button>
+        <button class="btn tertiary" id="export-data">Export data</button>
+        <button class="btn tertiary" id="import-data">Import data</button>
       </div>
       <div class="btn-row"><button class="btn ghost danger" id="reset-all">Erase everything &amp; start over</button></div>
     </div>
@@ -88,6 +96,7 @@ export function renderSettings(container, refresh, restartOnboarding) {
 
   container.querySelector('#edit-goal').addEventListener('click', () => openGoalModal(refresh));
   container.querySelector('#edit-fitness').addEventListener('click', () => openFitnessModal(refresh));
+  wireHeartRateCard(container, profile, refresh);
 
   container.querySelector('#export-data').addEventListener('click', () => {
     const blob = new Blob([exportState()], { type: 'application/json' });
@@ -118,6 +127,57 @@ export function renderSettings(container, refresh, restartOnboarding) {
     el.querySelector('#c-yes').addEventListener('click', () => {
       resetState(); closeModal(); restartOnboarding();
     });
+  });
+}
+
+function renderHeartRateCard(profile) {
+  const maxHR = resolveMaxHR(profile);
+  const zoneRows = maxHR
+    ? HR_ZONES.map(([key, label]) => {
+        const t = targetHR(profile, key);
+        return t ? `<div class="pr-row"><span class="k">${label}</span><span class="v">${t[0]}–${t[1]} bpm</span></div>` : '';
+      }).join('')
+    : '';
+  return `
+    <div class="card">
+      <h3 style="margin-bottom:6px">Heart rate</h3>
+      <p class="hint" style="margin-bottom:12px">Optional. Add your age (and resting heart rate, if you know it) for target HR zones alongside your pace targets.</p>
+      <div class="field-row">
+        <div class="field" style="flex:1"><label>Age</label>
+          <input type="number" inputmode="numeric" min="10" max="100" id="hr-age" value="${profile.age ?? ''}" placeholder="years"></div>
+        <div class="field" style="flex:1"><label>Resting HR</label>
+          <input type="number" inputmode="numeric" min="30" max="120" id="hr-resting" value="${profile.restingHR ?? ''}" placeholder="optional"></div>
+      </div>
+      <div class="field">
+        <label>Max HR override</label>
+        <input type="number" inputmode="numeric" min="120" max="230" id="hr-max" value="${profile.maxHR ?? ''}"
+          placeholder="${profile.age ? `optional — default ${estimateMaxHR(profile.age)} (220 − age)` : 'optional — from a real max-effort test'}">
+      </div>
+      ${!profile.age ? '<p class="hint">220 − age is a rough population estimate (+/- 10-12 bpm in practice) — enter your age above, or your max HR directly if you know it from a real test.</p>' : ''}
+      ${zoneRows ? `
+        <p class="hint" style="margin:14px 0 6px">
+          ${profile.restingHR ? 'Using the Karvonen (heart-rate reserve) method — more individualized than a flat %-of-max.' : 'Using a straight %-of-max-HR — add a resting HR above for a more individualized (Karvonen) target.'}
+        </p>
+        ${zoneRows}
+      ` : ''}
+    </div>`;
+}
+
+function wireHeartRateCard(container, profile, refresh) {
+  container.querySelector('#hr-age').addEventListener('change', (e) => {
+    const v = parseInt(e.target.value, 10);
+    profile.age = v > 0 ? v : null;
+    saveState(); refresh();
+  });
+  container.querySelector('#hr-resting').addEventListener('change', (e) => {
+    const v = parseInt(e.target.value, 10);
+    profile.restingHR = v > 0 ? v : null;
+    saveState(); refresh();
+  });
+  container.querySelector('#hr-max').addEventListener('change', (e) => {
+    const v = parseInt(e.target.value, 10);
+    profile.maxHR = v > 0 ? v : null;
+    saveState(); refresh();
   });
 }
 

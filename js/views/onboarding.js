@@ -318,6 +318,11 @@ function buildProfile() {
     vdot: Math.round(vdot * 10) / 10,
     vdotDate: todayStr(),
     goalTimeSec: draft.mode === 'goaltime' ? goalTimeSec() : null,
+    // Heart-rate targets are opt-in from Settings, not part of onboarding —
+    // pace-based training doesn't need them, so keep onboarding short.
+    age: null,
+    restingHR: null,
+    maxHR: null,
   };
 }
 

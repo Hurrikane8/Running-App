@@ -44,12 +44,29 @@
   --line: #e0e0db;
   --line-2: #d3d3cd;
 
-  /* single locked accent — Bitcoin orange, used on signal only */
+  /* primary accent — Bitcoin orange. Reserved for the single most important
+     thing on screen: today's session, primary CTAs, active tab, key figures. */
   --accent: #f7931a;
   --accent-ink: #1e1200;
   --accent-soft: #f8ead4;
   --accent-line: #eecb95;
   --accent-text: #a35700;
+
+  /* secondary — cool blue. Supporting elements: progress bars, secondary
+     buttons, data emphasis that isn't the day's single headline. */
+  --secondary: #2f6fed;
+  --secondary-ink: #ffffff;
+  --secondary-soft: #e6edfd;
+  --secondary-line: #b9cdf8;
+  --secondary-text: #1d51c4;
+
+  /* tertiary — violet. Lower-emphasis accents: phase labels, supporting
+     notices, tertiary utility actions. */
+  --tertiary: #8552f0;
+  --tertiary-ink: #ffffff;
+  --tertiary-soft: #f0e9fd;
+  --tertiary-line: #d6c1fa;
+  --tertiary-text: #6934d6;
 
   --good: #1f6b38;
   --good-soft: #d9e9db;
@@ -89,6 +106,18 @@
     --accent-line: #4d3a18;
     --accent-text: #f9a844;
 
+    --secondary: #5b93f0;
+    --secondary-ink: #0d0d0c;
+    --secondary-soft: #182644;
+    --secondary-line: #2c447e;
+    --secondary-text: #8fb8f7;
+
+    --tertiary: #a98af5;
+    --tertiary-ink: #0d0d0c;
+    --tertiary-soft: #241c3d;
+    --tertiary-line: #3e2f6b;
+    --tertiary-text: #c3aef9;
+
     --good: #6dc082;
     --good-soft: #1c3021;
 
@@ -103,32 +132,38 @@
   }
 }
 
-/* run-type colors (category identity), tuned per mode */
+/* run-type colors (category identity), tuned per mode.
+   Validated for CVD-safe separation (protan/deutan simulated) and >=4.5:1
+   text contrast on the chip background — these render as the chip's text
+   color, not just a decorative dot, so legibility is load-bearing here.
+   Recovery/Cross-train stay neutral gray on purpose: intentionally
+   lower-emphasis "optional/supportive" categories, not two more hues to
+   memorize. */
 :root {
-  --wt-easy: #2e7d46;
+  --wt-easy: #13861f;
   --wt-recovery: #64748b;
-  --wt-long: #2a78d6;
-  --wt-tempo: #a16207;
-  --wt-intervals: #c02f2f;
-  --wt-reps: #6d4fc4;
-  --wt-mpace: #0e7490;
-  --wt-hills: #8a5a2b;
-  --wt-strides: #0f766e;
-  --wt-race: #a85a00;
+  --wt-long: #134786;
+  --wt-tempo: #866713;
+  --wt-intervals: #86131b;
+  --wt-reps: #431386;
+  --wt-mpace: #076888;
+  --wt-hills: #8f3919;
+  --wt-strides: #0f7a56;
+  --wt-race: #86135c;
   --wt-xtrain: #82817b;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --wt-easy: #58bf7c;
+    --wt-easy: #76e581;
     --wt-recovery: #94a3b8;
-    --wt-long: #5598e7;
-    --wt-tempo: #d9a514;
-    --wt-intervals: #e66767;
-    --wt-reps: #9d8ef0;
-    --wt-mpace: #38bdd8;
-    --wt-hills: #c1915f;
-    --wt-strides: #35b5aa;
-    --wt-race: #f7931a;
+    --wt-long: #76a8e5;
+    --wt-tempo: #e5c776;
+    --wt-intervals: #e5767d;
+    --wt-reps: #a476e5;
+    --wt-mpace: #4fd8ec;
+    --wt-hills: #d17a4a;
+    --wt-strides: #5adfae;
+    --wt-race: #e576bc;
     --wt-xtrain: #82817b;
   }
 }
@@ -313,7 +348,7 @@ h1.screen-title {
 .type-guide-row .chip { flex: 0 0 auto; margin-top: 1px; }
 .type-guide-row .tg-what { font-size: 14px; line-height: 1.45; }
 .type-guide-row .tg-how { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; line-height: 1.45; }
-.phase-chip { font-family: var(--font-display); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-text); }
+.phase-chip { font-family: var(--font-display); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--tertiary-text); }
 
 /* ---- today: session focus block ---- */
 .today-hero { padding: 22px; }
@@ -362,6 +397,8 @@ h1.screen-title {
 .btn:active { transform: translateY(1px) scale(0.99); }
 .btn:disabled { opacity: 0.4; pointer-events: none; }
 .btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.secondary { background: var(--secondary); color: var(--secondary-ink); }
+.btn.tertiary { background: var(--tertiary); color: var(--tertiary-ink); }
 .btn.ghost { background: transparent; border: 1.5px solid var(--line-2); }
 .btn.small { width: auto; padding: 8px 14px; font-size: 13px; border-radius: 11px; }
 .btn-row { display: flex; gap: 10px; margin-top: 16px; }
@@ -459,10 +496,10 @@ h1.screen-title {
 
 /* ---- reshuffle / notice banner ---- */
 .banner {
-  background: var(--accent-soft); border: 1px solid var(--accent-line);
+  background: var(--tertiary-soft); border: 1px solid var(--tertiary-line);
   border-radius: 18px; padding: 17px 19px; margin-bottom: var(--gap); font-size: 14px; line-height: 1.5;
 }
-.banner b { color: var(--accent-text); }
+.banner b { color: var(--tertiary-text); }
 .banner .btn-row { margin-top: 14px; }
 .banner .btn { padding: 11px 14px; font-size: 13.5px; }
 
@@ -520,7 +557,7 @@ h1.screen-title {
 .plan-week-row .wn { flex: 0 0 42px; font-family: var(--font-display); font-weight: 700; color: var(--ink-3); font-size: 12.5px; letter-spacing: 0.02em; }
 .plan-week-row .ph { flex: 0 0 62px; }
 .plan-week-row .bar { flex: 1; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
-.plan-week-row .bar i { display: block; height: 100%; background: var(--series-vol); border-radius: 4px; }
+.plan-week-row .bar i { display: block; height: 100%; background: var(--secondary); border-radius: 4px; }
 .plan-week-row .km { flex: 0 0 60px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; font-family: var(--font-display); }
 .plan-week-row.cur { background: var(--accent-soft); border-radius: 11px; padding-inline: 10px; }
 .plan-week-row.cur .bar i { background: var(--accent); }

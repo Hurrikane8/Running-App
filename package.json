@@ -1,0 +1,12 @@
+{
+  "name": "stride",
+  "version": "1.0.0",
+  "description": "Stride — adaptive running-coach PWA. Static app (no build step); these scripts run the test suites.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/logic.mjs",
+    "test:e2e": "node tests/e2e.mjs",
+    "serve": "python3 -m http.server 8321"
+  }
+}
