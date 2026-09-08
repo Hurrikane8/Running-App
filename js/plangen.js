@@ -64,6 +64,14 @@ function phaseFor(weekIdx, totalWeeks, taperWeeks, ultra) {
   return 'peak';
 }
 
+// PEAK_KM is tuned for a 5-day/week schedule. More run days safely absorb
+// more total volume (shorter, more frequent runs vs. fewer big ones) and
+// fewer days absorb less, so scale it +/-7%/day around that baseline
+// instead of giving every day-count for a goal the exact same ceiling —
+// clamped so very low/high day counts stay in a sane range.
+const PEAK_DAYS_BASELINE = 5;
+const PEAK_DAY_FACTOR = 0.07;
+
 // Weekly volume series: classic 3:1 step-loading. Full-load weeks grow ≤10%
 // (6–8% with injuries); every 4th week is a planned deload at ~72% of the
 // current full load. The growth chain advances only on full-load weeks, so the
@@ -72,11 +80,14 @@ function phaseFor(weekIdx, totalWeeks, taperWeeks, ultra) {
 // baseline. Taper multipliers at the end.
 function volumeSeries(profile, totalWeeks, taperWeeks) {
   const idx = EXP_IDX[profile.experience];
-  // Weekly volume is capped by what the schedule can actually absorb: the
-  // long run at its cap plus each remaining day at an easy run that stays
-  // shorter than the long run. Without this, short-race plans with high
-  // entered mileage dump leftover volume into oversized "easy" runs.
-  let peakCap = PEAK_KM[profile.goal][idx];
+  const dayFactor = clamp(1 + (profile.daysPerWeek - PEAK_DAYS_BASELINE) * PEAK_DAY_FACTOR, 0.8, 1.35);
+  // Weekly volume is capped two ways, whichever is lower: PEAK_KM (scaled
+  // for day count, above) is the goal-appropriate ceiling; the schedule-
+  // absorption cap below is the long run at its cap plus each remaining day
+  // at an easy run that stays shorter than the long run — without it,
+  // short-race plans with high entered mileage or few run days dump
+  // leftover volume into oversized "easy" runs.
+  let peakCap = Math.round(PEAK_KM[profile.goal][idx] * dayFactor);
   if (!GOALS[profile.goal].ultra) {
     const longCap = LONG_CAP_KM[profile.goal][idx];
     const easyCap = Math.min(16, longCap * 0.85);
