@@ -1,0 +1,29 @@
+{
+  "voice": "af_heart",
+  "speed": 1.06,
+  "leadIn": 0.45,
+  "tail": 3.2,
+  "lines": [
+    { "id": "hook1",    "text": "Nobody touched your money.", "pause": 0.22 },
+    { "id": "hook2",    "text": "So why is it shrinking?", "pause": 0.55 },
+    { "id": "leak",     "text": "Follow the leak, and you'll find a three-hundred-year-old idea:", "pause": 0.12 },
+    { "id": "title",    "text": "the Cantillon Effect.", "say": "the [Cantillon](/kˌɑntijˈOn/) Effect.", "speed": 0.98, "pause": 0.75 },
+    { "id": "paris",    "text": "In 1720, Paris was printing paper money like crazy.", "say": "In seventeen-twenty, Paris was printing paper money like crazy.", "pause": 0.3 },
+    { "id": "banker",   "text": "A banker named Richard Cantillon got rich from it...", "say": "A banker named Richard [Cantillon](/kˌɑntijˈOn/) got rich from it...", "pause": 0.08 },
+    { "id": "why",      "text": "and then figured out why.", "pause": 0.6 },
+    { "id": "never",    "text": "New money never reaches everyone at once.", "pause": 0.25 },
+    { "id": "pours",    "text": "It pours in at one spot... and flows down the line.", "pause": 0.4 },
+    { "id": "first",    "text": "Whoever gets it first can spend it at today's prices.", "pause": 0.3 },
+    { "id": "pushes",   "text": "But all that spending pushes prices up.", "pause": 0.35 },
+    { "id": "next",     "text": "So the next person gets the money... after things already cost more.", "pause": 0.35 },
+    { "id": "end",      "text": "By the time it reaches the end of the line, usually your paycheck, prices have already climbed.", "pause": 0.45 },
+    { "id": "same",     "text": "Same money. Less stuff.", "pause": 0.8 },
+    { "id": "today",    "text": "Today, new money mostly enters through banks and financial markets.", "pause": 0.3 },
+    { "id": "assets",   "text": "So stocks and homes tend to rise first... and wages, last.", "pause": 0.45 },
+    { "id": "wave",     "text": "Own assets? You ride the wave. Don't? You chase it.", "pause": 0.75 },
+    { "id": "stole",    "text": "Nobody stole anything.", "pause": 0.2 },
+    { "id": "tap",      "text": "The winners just stand closer to the tap.", "pause": 0.5 },
+    { "id": "ask",      "text": "So whenever new money appears, ask one question:", "pause": 0.3 },
+    { "id": "question", "text": "Who gets it first?", "speed": 0.98, "pause": 0 }
+  ]
+}
