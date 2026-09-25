@@ -68,7 +68,8 @@ Add these to the URL as `#token` (or `?token`):
 1080×1920 and 60 fps, straight from the timeline, and muxes the offline audio
 mix. The result is an H.264/AAC MP4, frame-perfect and in sync, ready to upload.
 It needs Playwright's Chromium and `ffmpeg` (set `FFMPEG=/path/to/ffmpeg` if it
-isn't on your `PATH`) and takes a few minutes.
+isn't on your `PATH`) and takes a few minutes. The default quality gives a file of
+about 25 MB. Set `CRF=18` for a sharper, larger one.
 
 ## Script
 

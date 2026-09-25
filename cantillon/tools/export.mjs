@@ -1,6 +1,7 @@
 // Render the piece to an MP4 (1080x1920, frame-perfect, with the full mix):
 //   node tools/export.mjs out.mp4 [fps=60] [workers=4]
 // Needs Playwright's Chromium and ffmpeg (set FFMPEG=/path/to/ffmpeg if not on PATH).
+// CRF=20 (default) keeps the file around 25 MB; lower means larger and sharper.
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || '/opt/node22/lib/node_modules/playwright/index.mjs');
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -58,7 +59,7 @@ await new Promise((res, rej) => {
     '-hide_banner', '-loglevel', 'error', '-y',
     '-framerate', String(fps), '-i', path.join(tmp, 'f%05d.jpg'),
     '-i', path.join(tmp, 'mix.wav'),
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p',
+    '-c:v', 'libx264', '-preset', 'slow', '-crf', String(process.env.CRF || 20), '-pix_fmt', 'yuv420p',
     '-profile:v', 'high', '-level', '4.2', '-r', String(fps),
     '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out,
   ];
