@@ -110,10 +110,43 @@ function audioPrepare() {
   AUD.decoding = decodeOn(c).then((b) => (AUD.buf = b));
   return AUD.decoding;
 }
+/** a tiny silent WAV, looped by an <audio> element (see audioUnlock) */
+function silentWav() {
+  const n = 4000;
+  const b = new DataView(new ArrayBuffer(44 + n * 2));
+  const w = (o, s) => [...s].forEach((ch, i) => b.setUint8(o + i, ch.charCodeAt(0)));
+  w(0, 'RIFF');
+  b.setUint32(4, 36 + n * 2, true);
+  w(8, 'WAVEfmt ');
+  b.setUint32(16, 16, true);
+  b.setUint16(20, 1, true);
+  b.setUint16(22, 1, true);
+  b.setUint32(24, 8000, true);
+  b.setUint32(28, 16000, true);
+  b.setUint16(32, 2, true);
+  b.setUint16(34, 16, true);
+  w(36, 'data');
+  b.setUint32(40, n * 2, true);
+  return URL.createObjectURL(new Blob([b.buffer], { type: 'audio/wav' }));
+}
 /** call synchronously inside a user gesture (iOS needs this) */
 function audioUnlock() {
   const c = audioCtx();
   if (!c) return;
+  // iPhones mute Web Audio when the ring/silent switch is on. Ask for a
+  // playback session (Safari 16.4+); older iOS gets the same effect from a
+  // looping silent <audio> element.
+  try {
+    if (navigator.audioSession) navigator.audioSession.type = 'playback';
+    else if (!AUD.keep && (/iP(hone|ad|od)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1))) {
+      AUD.keep = new Audio(silentWav());
+      AUD.keep.loop = true;
+      AUD.keep.setAttribute('playsinline', '');
+      AUD.keep.play().catch(() => {});
+    }
+  } catch (e) {
+    /* best effort */
+  }
   if (c.state !== 'running') c.resume();
   const s = c.createBufferSource();
   s.buffer = c.createBuffer(1, 1, c.sampleRate);

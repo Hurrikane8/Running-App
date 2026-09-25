@@ -58,8 +58,17 @@ Add these to the URL as `#token` (or `?token`):
 | `#nomusic` | Drop the score, e.g. to add a platform sound later |
 | `#nosfx` | Drop the sound effects |
 | `#novoice` | Drop the narrator, to record your own voice-over on the same timing |
+| `#nograin` | Turn off the film grain (smaller, cleaner screen recordings) |
 | `#autoplay` | Start without a tap (silent unless the browser allows autoplay) |
 | `?t=42` | Start at 42 seconds |
+
+### Or skip recording: export an MP4
+
+`node tools/export.mjs cantillon-effect.mp4` renders every frame at
+1080×1920 and 60 fps, straight from the timeline, and muxes the offline audio
+mix. The result is an H.264/AAC MP4, frame-perfect and in sync, ready to upload.
+It needs Playwright's Chromium and `ffmpeg` (set `FFMPEG=/path/to/ffmpeg` if it
+isn't on your `PATH`) and takes a few minutes.
 
 ## Script
 
@@ -126,6 +135,7 @@ node tools/snap.mjs frames/ 0 9.5 30   # render frames at given seconds
 node tools/mix.mjs mix.wav             # render the full soundtrack offline
 node tools/live.mjs out/               # real-time playback smoke test
 node tools/perf.mjs                    # per-second frame cost
+node tools/export.mjs out.mp4          # frame-perfect 1080x1920 60 fps MP4
 ```
 
 ## Notes on the history

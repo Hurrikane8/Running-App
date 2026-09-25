@@ -14,6 +14,7 @@ const OPT = (() => {
   return {
     autoplay: on('autoplay'),
     captions: on('captions'),
+    grain: !off('grain'),
     music: !off('music'),
     voice: !off('voice'),
     sfx: !off('sfx'),

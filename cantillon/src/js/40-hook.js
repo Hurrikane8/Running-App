@@ -101,7 +101,7 @@ function drawBackground(t) {
 function drawPost(t, frameNo) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   if (VIGN) ctx.drawImage(VIGN, 0, 0);
-  if (!REDUCED && SPR.grain) {
+  if (!REDUCED && OPT.grain && SPR.grain) {
     ctx.globalAlpha = 0.03;
     const T2 = 512;
     const ox = Math.floor(R(frameNo, 5) * T2);
