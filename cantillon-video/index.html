@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Cantillon Effect</title>
+<style>
+  @font-face { font-family: Fraunces; font-weight: 600; src: url(fonts/fraunces-latin-600-normal.woff2) format('woff2'); }
+  @font-face { font-family: Fraunces; font-weight: 700; src: url(fonts/fraunces-latin-700-normal.woff2) format('woff2'); }
+  @font-face { font-family: Fraunces; font-weight: 800; src: url(fonts/fraunces-latin-800-normal.woff2) format('woff2'); }
+  @font-face { font-family: Fraunces; font-weight: 900; src: url(fonts/fraunces-latin-900-normal.woff2) format('woff2'); }
+  @font-face { font-family: Inter; font-weight: 500; src: url(fonts/inter-latin-500-normal.woff2) format('woff2'); }
+  @font-face { font-family: Inter; font-weight: 600; src: url(fonts/inter-latin-600-normal.woff2) format('woff2'); }
+  @font-face { font-family: Inter; font-weight: 700; src: url(fonts/inter-latin-700-normal.woff2) format('woff2'); }
+  @font-face { font-family: Inter; font-weight: 800; src: url(fonts/inter-latin-800-normal.woff2) format('woff2'); }
+  @font-face { font-family: Caveat; font-weight: 700; src: url(fonts/caveat-latin-700-normal.woff2) format('woff2'); }
+  html, body { margin: 0; background: #0f1320; color: #f4ecdc; font-family: Inter, system-ui, sans-serif; }
+  #wrap { max-width: 1280px; margin: 0 auto; padding: 16px; box-sizing: border-box; }
+  canvas { width: 100%; height: auto; display: block; border-radius: 8px; background: #1b2236; }
+  #ui { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
+  #ui button { background: #f2b53c; color: #1b2236; border: 0; border-radius: 6px; padding: 8px 16px; font-weight: 700; cursor: pointer; }
+  #ui input { flex: 1; }
+  #ui span { font-variant-numeric: tabular-nums; min-width: 110px; text-align: right; }
+  body.render #ui, body.render #wrap { padding: 0; margin: 0; max-width: none; }
+  body.render #ui { display: none; }
+  body.render canvas { width: 1920px; border-radius: 0; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="1920" height="1080"></canvas>
+  <div id="ui">
+    <button id="play">Play</button>
+    <input id="scrub" type="range" min="0" max="1000" value="0">
+    <span id="clock">0:00.0</span>
+  </div>
+  <audio id="audio" src="the-cantillon-effect.mp4" preload="auto"></audio>
+</div>
+<script src="src/timeline.js"></script>
+<script src="src/engine.js"></script>
+<script src="src/art.js"></script>
+<script src="src/scenes.js"></script>
+<script>
+(async () => {
+  const render = new URLSearchParams(location.search).has('render');
+  if (render) document.body.classList.add('render');
+  ctx = document.getElementById('c').getContext('2d');
+  await Promise.all([
+    '600 20px Fraunces', '700 20px Fraunces', '800 20px Fraunces', '900 20px Fraunces',
+    '500 20px Inter', '600 20px Inter', '700 20px Inter', '800 20px Inter', '700 20px Caveat',
+  ].map(f => document.fonts.load(f)));
+  initTimeline(window.TIMELINE);
+  makeGrain();
+  buildScenes();
+  window.DURATION = TL.duration;
+  window.SFX_LIST = SFX;
+  window.renderFrame = (t, frame = Math.round(t * 30)) => drawFrame(t, frame);
+  window.grab = (t, frame, q = 0.93) => { drawFrame(t, frame); return ctx.canvas.toDataURL('image/jpeg', q); };
+  window.grabPng = (t) => { drawFrame(t, Math.round(t * 30)); return ctx.canvas.toDataURL('image/png'); };
+  window.ready = true;
+  if (render) return;
+
+  // Interactive preview player (plays the mixed soundtrack when it exists).
+  const audio = document.getElementById('audio');
+  const scrub = document.getElementById('scrub');
+  const clock = document.getElementById('clock');
+  const btn = document.getElementById('play');
+  let playing = false, t = 0, last = 0, hasAudio = true;
+  audio.addEventListener('error', () => { hasAudio = false; });
+  const fmt = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
+  const show = () => { drawFrame(t, Math.round(t * 30)); clock.textContent = fmt(t); scrub.value = (t / TL.duration) * 1000; };
+  btn.onclick = () => {
+    playing = !playing;
+    btn.textContent = playing ? 'Pause' : 'Play';
+    if (playing) { last = performance.now(); if (hasAudio) { audio.currentTime = t; audio.play().catch(() => {}); } }
+    else audio.pause();
+  };
+  scrub.oninput = () => { t = (scrub.value / 1000) * TL.duration; if (hasAudio) audio.currentTime = t; show(); };
+  const loop = now => {
+    if (playing) {
+      t = hasAudio && !audio.paused ? audio.currentTime : t + (now - last) / 1000;
+      last = now;
+      if (t >= TL.duration) { t = TL.duration; playing = false; btn.textContent = 'Play'; }
+      show();
+    }
+    requestAnimationFrame(loop);
+  };
+  show();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "cantillon-effect-video",
+  "private": true,
+  "type": "commonjs",
+  "description": "Source for the animated explainer 'The Cantillon Effect'",
+  "dependencies": {
+    "playwright-core": "1.56.x"
+  }
+}

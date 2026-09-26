@@ -1,0 +1,54 @@
+{
+  "voice": "af_heart",
+  "speed": 1.0,
+  "lead_in": 0.9,
+  "tail": 5.6,
+  "pronunciations": { "kˈæntɪlən": "kˌɑːntiːjˈoʊn" },
+  "lines": [
+    { "id": "h1", "scene": "hook", "pause": 0.35, "text": "Imagine a machine that can create money out of thin air." },
+    { "id": "h2", "scene": "hook", "pause": 0.55, "text": "Not counterfeit money. Real, brand-new dollars." },
+    { "id": "h3", "scene": "hook", "pause": 0.15, "text": "Now, if a million of those dollars came out tomorrow," },
+    { "id": "h4", "scene": "hook", "pause": 0.9,  "text": "would it matter who got them first?" },
+    { "id": "h5", "scene": "hook", "pause": 0.3,  "text": "It turns out, it matters a lot." },
+    { "id": "h6", "scene": "hook", "pause": 0.45, "text": "It may be why your rent keeps climbing, why your savings seem to shrink, and why the people at the top keep pulling further ahead." },
+    { "id": "h7", "scene": "hook", "pause": 1.5,  "text": "It's called the Cantillon Effect." },
+
+    { "id": "c1", "scene": "cantillon", "pause": 0.4, "text": "Three hundred years ago in Paris, a banker named Richard Cantillon had a front-row seat to a wild experiment." },
+    { "id": "c2", "scene": "cantillon", "pause": 0.4, "text": "France had started printing paper money like never before. Cantillon made a fortune, and he noticed something most people missed." },
+    { "id": "c3", "scene": "cantillon", "pause": 1.2, "text": "New money doesn't spread through an economy evenly. It enters at one specific point, and ripples outward." },
+
+    { "id": "r1", "scene": "ripple", "pause": 0.5, "text": "Picture a drop falling into a still pond." },
+    { "id": "r2", "scene": "ripple", "pause": 0.5, "text": "The water closest to the splash moves first. The far shore feels it last." },
+    { "id": "r3", "scene": "ripple", "pause": 1.2, "text": "With money, the ripple is rising prices. And where you stand in that pond changes everything." },
+
+    { "id": "t1", "scene": "town", "pause": 0.5,  "text": "Let's shrink it down to a tiny town, where a loaf of bread costs one dollar." },
+    { "id": "t2", "scene": "town", "pause": 0.45, "text": "One day, a stack of new money is created, and handed to one person: the banker. He's first in line." },
+    { "id": "t3", "scene": "town", "pause": 0.45, "text": "He spends it right away, hiring builders and buying property, all at yesterday's prices." },
+    { "id": "t4", "scene": "town", "pause": 0.45, "text": "The builder he hires gets that money next. With more money chasing the same goods, prices start to creep up. But her pay went up first, so she barely notices." },
+    { "id": "t5", "scene": "town", "pause": 0.45, "text": "Then the money reaches the shopkeeper. Business is booming, so bread now costs a dollar fifty." },
+    { "id": "t6", "scene": "town", "pause": 0.6,  "text": "And the teacher and the retiree? Their incomes haven't changed at all. But bread now costs two dollars." },
+    { "id": "t7", "scene": "town", "pause": 0.5,  "text": "Nobody stole anything. Nobody broke the law." },
+    { "id": "t8", "scene": "town", "pause": 1.2,  "text": "And yet, wealth quietly moved, from the people at the back of the line, to the people at the front." },
+
+    { "id": "m1", "scene": "modern", "pause": 0.4,  "text": "Now, scale that up to today's world." },
+    { "id": "m2", "scene": "modern", "pause": 0.45, "text": "Modern money is created by central banks, and by commercial banks every time they make a loan." },
+    { "id": "m3", "scene": "modern", "pause": 0.45, "text": "The first to touch it are banks, governments, and big investors, who can borrow cheaply and buy assets, like stocks and real estate, before prices move." },
+    { "id": "m4", "scene": "modern", "pause": 0.6,  "text": "So asset prices tend to rise first. Then the money trickles into businesses, and eventually, into wages. Wages are almost always last." },
+    { "id": "m5", "scene": "modern", "pause": 0.4,  "text": "In twenty twenty, trillions of new dollars were created. Within months, the stock market hit record highs." },
+    { "id": "m6", "scene": "modern", "pause": 1.2,  "text": "A year later, groceries and rent started to climb. And wages? For two years, they fell behind prices." },
+
+    { "id": "y1", "scene": "you", "pause": 0.5,  "text": "So what does this mean for you?" },
+    { "id": "y2", "scene": "you", "pause": 0.5,  "text": "If you earn a paycheck, you're usually near the back of the line. Your raise tends to arrive after prices have already moved." },
+    { "id": "y3", "scene": "you", "pause": 0.5,  "text": "If you save in cash, its value slowly leaks away. It's like walking up an escalator that's going down." },
+    { "id": "y4", "scene": "you", "pause": 0.5,  "text": "And if you don't own a home yet, it can run away from you faster than you can save for it." },
+    { "id": "y5", "scene": "you", "pause": 0.35, "text": "Meanwhile, people who already own assets, and who sit closest to the source, get richer without doing anything differently." },
+    { "id": "y6", "scene": "you", "pause": 1.1,  "text": "That's how the gap grows." },
+
+    { "id": "w1", "scene": "matters", "pause": 0.5, "text": "The Cantillon Effect isn't a conspiracy. It's simply how new money moves. But because it's invisible, most people never notice it." },
+    { "id": "w2", "scene": "matters", "pause": 0.6, "text": "Inflation isn't just prices going up. It's a transfer, from the people at the back of the line, to the people at the front." },
+    { "id": "w3", "scene": "matters", "pause": 1.0, "text": "Once you see that, you start asking better questions. Where is new money going? Who benefits first? And what am I storing my hard work in?" },
+
+    { "id": "e1", "scene": "end", "pause": 0.5, "text": "So the next time you hear that new money is being created, don't just ask how much." },
+    { "id": "e2", "scene": "end", "pause": 0.0, "text": "Ask: who gets it first?" }
+  ]
+}
