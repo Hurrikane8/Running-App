@@ -1,8 +1,10 @@
 // Shared workout presentation helpers + the log-workout modal.
 
 import { loadState, saveState } from './storage.js';
-import { pacesForDate, racePaceForDate, goalPaceSec, workPaceKey, GOALS } from './plangen.js';
+import { pacesForDate, racePaceForDate, goalPaceSec, workPaceKey, expectedRpe, estimateRaceTime, GOALS } from './plangen.js';
 import { targetHR } from './hr.js';
+import { profileSvg } from './charts.js';
+import { vdotFromRace } from './paces.js';
 import { fmtDist, fmtPace, fmtPaceDisplay, fmtPaceRangeDisplay, fmtTime, esc, kmToUnit, unitToKm, todayStr, KM_PER_MI } from './util.js';
 
 export const TYPE_LABEL = {
@@ -55,8 +57,9 @@ export function targetLine(w, profile, settings, evidence = {}) {
   // marathon, threshold, interval); 'rep' and 'racepace' intentionally have
   // no zone and targetHR() returns null for them.
   const hr = profile ? targetHR(profile, hrZoneFor(w.paceKey, profile.goal)) : null;
-  if (hr) parts.push(`HR ${hr[0]}-${hr[1]}`);
-  return parts.join(' · ');
+  if (hr) parts.push(`HR ${hr[0]}–${hr[1]}`);
+  // each part stays on one line; wrapping happens only between parts
+  return parts.map((x) => `<span class="nw">${x}</span>`).join(' · ');
 }
 
 // Goal-pace running sits in a different HR zone depending on the race
@@ -108,6 +111,16 @@ export function structureRows(w, profile, settings, evidence = {}) {
     `<div class="structure-row"><div class="structure-label">${k}</div><div class="structure-body">${v}</div></div>`).join('');
 }
 
+// Plain-text version (calendar export).
+export function structureText(w, profile, settings, evidence = {}) {
+  const strip = (h) => h.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  const out = [];
+  if (w.structure.warmup) out.push(`Warm-up: ${w.structure.warmup}`);
+  out.push(`Main set: ${strip(decoratePaces(w.structure.main, w, profile, settings, evidence))}`);
+  if (w.structure.cooldown) out.push(`Cool-down: ${w.structure.cooldown}`);
+  return out.join('\n');
+}
+
 // Turn pace phrases in a structure line ("at threshold pace") into the
 // runner's actual numbers. One pass with a combined pattern, so inserted
 // markup is never re-matched, and the matched text keeps its own casing
@@ -152,17 +165,135 @@ function decoratePaces(text, w, profile, settings, evidence = {}) {
 
 // ---- modal plumbing ----
 
+let lastFocus = null;
+function onModalKey(e) {
+  if (e.key === 'Escape') { e.preventDefault(); closeModal(); return; }
+  if (e.key !== 'Tab') return;
+  // keep keyboard focus inside the dialog
+  const modal = document.querySelector('#modal-root .modal');
+  if (!modal) return;
+  const f = [...modal.querySelectorAll('button, input, select, textarea, [href]')].filter((x) => !x.disabled && x.offsetParent !== null);
+  if (!f.length) return;
+  if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+  else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+}
+
 export function openModal(html) {
   const root = document.getElementById('modal-root');
-  root.innerHTML = `<div class="modal-scrim"><div class="modal" role="dialog" aria-modal="true">${html}</div></div>`;
+  lastFocus = document.activeElement;
+  root.innerHTML = `<div class="modal-scrim"><div class="modal" role="dialog" aria-modal="true" tabindex="-1">${html}</div></div>`;
   const scrim = root.firstElementChild;
+  const modal = scrim.firstElementChild;
+  const title = modal.querySelector('h2');
+  if (title) { title.id ||= 'modal-title'; modal.setAttribute('aria-labelledby', title.id); }
   scrim.addEventListener('click', (e) => { if (e.target === scrim) closeModal(); });
   root.querySelectorAll('.modal-close').forEach((b) => b.addEventListener('click', closeModal));
-  return scrim.firstElementChild;
+  document.addEventListener('keydown', onModalKey);
+  modal.focus({ preventScroll: true });
+  return modal;
 }
 
 export function closeModal() {
-  document.getElementById('modal-root').innerHTML = '';
+  const root = document.getElementById('modal-root');
+  if (!root || !root.innerHTML) return;
+  root.innerHTML = '';
+  document.removeEventListener('keydown', onModalKey);
+  if (lastFocus && document.contains(lastFocus)) lastFocus.focus({ preventScroll: true });
+  lastFocus = null;
+}
+
+// ---- workout profile + post-run coaching ----
+
+// Intensity-profile graphic for a structured workout (null for legacy
+// workouts or single-effort runs, where it would be a flat block).
+export function workoutProfile(w, profile, evidence = {}) {
+  if (!w.segments || w.segments.length < 2 || !profile) return '';
+  const p = pacesForDate(profile, w.date, evidence.plan, evidence.extraLogs);
+  const gp = goalPaceSec(profile, evidence.plan, evidence.extraLogs) || p.threshold;
+  const pace = {
+    easy: (p.easy[0] + p.easy[1]) / 2, recovery: (p.recovery[0] + p.recovery[1]) / 2, jog: p.easy[0] + 20,
+    threshold: p.threshold, interval: p.interval, rep: p.rep, marathon: p.marathon, goalpace: gp,
+    race: gp, hill: p.interval, stride: p.rep,
+  };
+  const minutesOf = (s) => (s.min != null ? s.min : (s.km * (pace[s.z] || pace.easy)) / 60);
+  const goalH = { '5k': 0.88, '10k': 0.8, half: 0.7, marathon: 0.58 }[profile.goal] ?? 0.75;
+  const totalMin = w.segments.reduce((a, s) => a + minutesOf(s), 0);
+  return `<figure class="wk-profile-wrap" aria-label="Session intensity profile, about ${Math.round(totalMin)} minutes">
+    ${profileSvg(w.segments, minutesOf, { goalH })}
+    <figcaption><span>Start</span><span>≈ ${Math.round(totalMin)} min</span></figcaption>
+  </figure>`;
+}
+
+const EASY_TYPES = new Set(['easy', 'recovery', 'long', 'strides']);
+
+// Coach's read on a logged run: { tone: 'good'|'warn'|'info', text }[].
+export function logFeedback(w, log, profile, settings, evidence = {}) {
+  const out = [];
+  if (!log || !profile) return out;
+  const units = settings.units;
+  const pace = log.durSec && log.distKm ? log.durSec / log.distKm : null;
+  const isEffort = w && (w.type === 'tt' || w.type === 'race');
+  if ((isEffort || (!w && log.race)) && log.durSec && log.distKm >= 1.5) {
+    const v = vdotFromRace(log.distKm, log.durSec);
+    const eq = [5, 10].map((d) => `${d}K ${fmtTime(estimateRaceTime(v, d))}`).join(' · ');
+    out.push({ tone: 'good', text: `Fitness reading: VDOT ${v.toFixed(1)} (equivalent ${eq}). Your paces now reflect it.` });
+    return out;
+  }
+  if (!w) return out;
+  const key = workPaceKey(w);
+  if (key) {
+    const target = workTargetSec(w, profile, evidence);
+    if (log.workPaceSec && target) {
+      const diff = log.workPaceSec - target; // + = slower
+      const s = Math.abs(Math.round(units === 'mi' ? diff * 1.609344 : diff));
+      if (Math.abs(diff) <= target * 0.02) out.push({ tone: 'good', text: `Main set ${fmtPace(log.workPaceSec, units)}: right on target. Exactly the stimulus the session is for.` });
+      else if (diff < 0) out.push({ tone: diff < -target * 0.05 ? 'warn' : 'good', text: `Main set ${fmtPace(log.workPaceSec, units)}, ${s} s/${units} faster than target. ${diff < -target * 0.05 ? 'Strong, but racing workouts costs recovery. If it felt controlled, your paces will sharpen on their own.' : 'Nicely done; if that felt controlled your paces will creep up.'}` });
+      else out.push({ tone: 'info', text: `Main set ${fmtPace(log.workPaceSec, units)}, ${s} s/${units} off target. Heat, hills and tired legs all cost time. One session changes little; a pattern will adjust your paces.` });
+    } else {
+      out.push({ tone: 'info', text: 'Add the main-set pace from your watch laps next time. It is what lets the plan sharpen your paces.' });
+    }
+    const exp = expectedRpe(key, profile.goal);
+    if (log.rpe && exp && log.rpe >= exp + 3) out.push({ tone: 'warn', text: `RPE ${log.rpe} is well above what this session should feel like (about ${Math.round(exp)}). Sleep, stress or a niggle? Keep the next two days truly easy.` });
+  } else if (EASY_TYPES.has(w.type) && pace) {
+    const p = pacesForDate(profile, w.date, evidence.plan, evidence.extraLogs);
+    const band = w.type === 'recovery' ? p.recovery : p.easy; // [slow, fast]
+    if (pace < band[1] - 8) out.push({ tone: 'warn', text: `${fmtPace(pace, units)} is quicker than your ${w.type === 'recovery' ? 'recovery' : 'easy'} range (${fmtPaceRangeDisplay(band, { ...settings, paceDisplay: 'outdoor' })}). Keep easy days easy so the key sessions land. That is the 80/20 rule.` });
+    else if (pace <= band[0] + 15) out.push({ tone: 'good', text: `${fmtPace(pace, units)}, right in the ${w.type === 'recovery' ? 'recovery' : 'easy'} zone. This is how aerobic fitness is built.` });
+    else out.push({ tone: 'good', text: `${fmtPace(pace, units)}, relaxed and slower than the range. Perfectly fine on an easy day.` });
+    if (log.rpe && log.rpe >= 7) out.push({ tone: 'warn', text: `RPE ${log.rpe} on an easy run is a flag. If it keeps happening, check sleep, heat, fuelling, or take an extra rest day.` });
+  }
+  if (w.distKm && log.distKm < w.distKm * 0.7 && !isEffort) out.push({ tone: 'info', text: 'Shorter than planned. No need to make it up later; consistency beats catching up.' });
+  return out;
+}
+
+export function feedbackHtml(items) {
+  if (!items.length) return '';
+  return `<div class="coach">${items.map((f) => `<p class="coach-${f.tone}">${esc(f.text)}</p>`).join('')}</div>`;
+}
+
+// "8.1 km · 42:10 · 5:12 /km · RPE 6"
+export function logLine(log, settings) {
+  const parts = [fmtDist(log.distKm, settings.units)];
+  if (log.durSec) parts.push(fmtTime(log.durSec), fmtPaceDisplay(log.durSec / log.distKm, settings));
+  if (log.rpe) parts.push(`RPE ${log.rpe}`);
+  return parts.map((x) => `<span class="nw">${x}</span>`).join(' · ');
+}
+
+let toastTimer = null;
+export function toast(html, ms = 4200) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    document.body.appendChild(el);
+  }
+  el.innerHTML = html;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), ms);
+  el.onclick = () => el.classList.remove('show');
 }
 
 // ---- log-workout modal (also used for ad-hoc runs) ----

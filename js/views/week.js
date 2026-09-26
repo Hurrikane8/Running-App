@@ -4,7 +4,9 @@
 import { loadState, saveState } from '../storage.js';
 import { weekOf, findWorkout } from '../plangen.js';
 import { todayStr, addDays, mondayOf, fmtDateShort, strToDate, DAY_ABBR, esc, fmtDist } from '../util.js';
-import { chipFor, targetLine, openLogModal, openModal, closeModal, structureRows } from '../wkfmt.js';
+import {
+  chipFor, targetLine, openLogModal, openModal, closeModal, structureRows, workoutProfile, logFeedback, feedbackHtml, logLine, toast,
+} from '../wkfmt.js';
 
 let shownMonday = null;   // Monday of the displayed week
 let movingId = null;      // workout id in tap-to-move mode
@@ -20,7 +22,11 @@ export function renderWeek(container, refresh) {
   const weekNo = week ? week.idx + 1 : null;
   const planned = week ? week.workouts.filter((w) => w.type !== 'xtrain') : [];
   const plannedKm = planned.reduce((s, w) => s + (w.distKm ?? (w.durMin ? w.durMin / 7 : 0)), 0);
-  const doneKm = planned.filter((w) => w.status === 'done').reduce((s, w) => s + (w.log?.distKm || 0), 0);
+  const weekEnd = addDays(shownMonday, 6);
+  const extras = state.extraLogs.filter((e) => e.date >= shownMonday && e.date <= weekEnd);
+  const doneKm = planned.filter((w) => w.status === 'done').reduce((s, w) => s + (w.log?.distKm || 0), 0)
+    + extras.reduce((s, e) => s + (e.distKm || 0), 0);
+  const pct = plannedKm ? Math.min(100, Math.round((doneKm / plannedKm) * 100)) : 0;
 
   let html = `
     <header class="mast">
@@ -45,6 +51,7 @@ export function renderWeek(container, refresh) {
       <div class="stat-tile"><div class="v">${fmtDist(plannedKm, settings.units, 0)}</div><div class="k">planned</div></div>
       <div class="stat-tile"><div class="v">${fmtDist(doneKm, settings.units, 0)}</div><div class="k">completed</div></div>
       <div class="stat-tile"><div class="v">${planned.filter((w) => w.status === 'done').length}/${planned.length}</div><div class="k">sessions</div></div>
+      <div class="week-progress" aria-hidden="true"><i style="width:${pct}%"></i></div>
     </div>`;
   }
 
@@ -60,23 +67,43 @@ export function renderWeek(container, refresh) {
     const date = addDays(shownMonday, d);
     const isToday = date === today;
     const dayW = week ? week.workouts.filter((w) => w.date === date) : [];
+    const dayX = extras.filter((e) => e.date === date);
     const dnum = strToDate(date).getDate();
-    html += `<div class="day-row ${isToday ? 'today-row' : ''}" data-date="${date}">
+    html += `<div class="day-row ${isToday ? 'today-row' : ''} ${date < today ? 'past-row' : ''}" data-date="${date}">
       <div class="day-col"><b>${DAY_ABBR[d]}</b><span>${dnum}</span></div>
       <div class="day-main">`;
-    if (!dayW.length) {
+    if (!dayW.length && !dayX.length) {
       html += `<div class="rest">${week ? 'Rest' : '-'}</div>`;
     }
     for (const w of dayW) {
-      html += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:2px 0" data-wid="${w.id}">
-        ${chipFor(w)}
+      const missed = w.status === 'planned' && date < today && w.type !== 'race';
+      const chip = missed ? '<span class="chip missed">Missed</span>' : chipFor(w);
+      const sub = w.status === 'done' && w.log
+        ? `${logLine(w.log, settings)}<span class="w-plan">plan: ${targetLine(w, profile, settings, evidence)}</span>`
+        : targetLine(w, profile, settings, evidence);
+      html += `<div class="w-item ${missed || w.status === 'skipped' ? 'is-missed' : ''}" data-wid="${w.id}">
+        ${chip}
         <div style="min-width:0">
           <div class="w-title">${esc(w.title)}</div>
-          <div class="w-sub">${targetLine(w, profile, settings, evidence)}</div>
+          <div class="w-sub">${sub}</div>
+        </div>
+      </div>`;
+    }
+    for (const e of dayX) {
+      html += `<div class="w-item" data-xid="${esc(e.id)}">
+        <span class="chip chip-extra">${e.race ? 'Race' : 'Extra'}</span>
+        <div style="min-width:0">
+          <div class="w-title">${e.race ? 'Race / time trial' : 'Unplanned run'}</div>
+          <div class="w-sub">${logLine(e, settings)}</div>
         </div>
       </div>`;
     }
     html += `</div><div class="day-actions">`;
+    for (const e of dayX) {
+      html += `<button class="icon-btn" data-editx="${esc(e.id)}" aria-label="Edit unplanned run">
+        <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>`;
+    }
     for (const w of dayW) {
       html += `<button class="icon-btn" data-detail="${w.id}" aria-label="Details for ${esc(w.title)}">
         <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -98,6 +125,12 @@ export function renderWeek(container, refresh) {
 
   container.querySelectorAll('[data-detail]').forEach((b) =>
     b.addEventListener('click', (e) => { e.stopPropagation(); openDetail(b.dataset.detail, refresh); }));
+  container.querySelectorAll('[data-editx]').forEach((b) =>
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const x = state.extraLogs.find((k) => k.id === b.dataset.editx);
+      if (x) openLogModal(null, refresh, x);
+    }));
 
   // tap-to-move
   container.querySelectorAll('[data-move]').forEach((b) => {
@@ -146,28 +179,44 @@ function openDetail(id, refresh) {
   const w = found.workout;
   const { profile, settings } = state;
   const evidence = { plan: state.plan, extraLogs: state.extraLogs };
+  const fb = w.status === 'done' && w.log ? logFeedback(w, w.log, profile, settings, evidence) : [];
   const el = openModal(`
     <button class="modal-close" aria-label="Close">×</button>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">${chipFor(w)}</div>
     <h2>${esc(w.title)}</h2>
     <p class="sub">${fmtDateShort(w.date)} · ${targetLine(w, profile, settings, evidence)}</p>
+    ${workoutProfile(w, profile, evidence)}
     <div class="structure">${structureRows(w, profile, settings, evidence)}</div>
-    ${w.tip ? `<div class="tip">${esc(w.tip)}</div>` : ''}
+    ${w.tip && w.status === 'planned' ? `<div class="tip">${esc(w.tip)}</div>` : ''}
+    ${w.status === 'done' && w.log ? `<div class="logged-line" style="margin-top:14px"><span class="chip done">✓ Logged</span> ${logLine(w.log, settings)}</div>${feedbackHtml(fb)}` : ''}
     ${w.status === 'planned'
       ? `<div class="btn-row">
            <button class="btn primary" id="d-log">Log workout</button>
          </div>`
       : w.status === 'done'
-        ? `<div class="btn-row"><button class="btn ghost" id="d-unlog">Undo log</button></div>`
+        ? `<div class="btn-row"><button class="btn ghost" id="d-unlog">Undo log</button><button class="btn secondary" id="d-edit">Edit log</button></div>`
         : `<div class="btn-row"><button class="btn ghost" id="d-unskip">Restore workout</button></div>`}
   `);
-  el.querySelector('#d-log')?.addEventListener('click', () => { closeModal(); openLogModal(w, refresh); });
+  const afterLog = (info) => {
+    refresh();
+    if (!info) return;
+    const f = logFeedback(info.workout, info.log, profile, settings, evidence);
+    toast(f.length ? `<b>Saved.</b> ${esc(f[0].text)}` : '<b>Saved.</b>');
+  };
+  el.querySelector('#d-log')?.addEventListener('click', () => { closeModal(); openLogModal(w, afterLog); });
+  el.querySelector('#d-edit')?.addEventListener('click', () => { closeModal(); openLogModal(w, afterLog); });
   el.querySelector('#d-unlog')?.addEventListener('click', () => {
     w.status = 'planned'; w.log = null; saveState(); closeModal(); refresh();
   });
   el.querySelector('#d-unskip')?.addEventListener('click', () => {
     w.status = 'planned'; saveState(); closeModal(); refresh();
   });
+}
+
+// Open the Week view on a given week (e.g. from the Plan chart).
+export function showWeek(monday) {
+  shownMonday = mondayOf(monday);
+  movingId = null;
 }
 
 export function resetWeekView() {

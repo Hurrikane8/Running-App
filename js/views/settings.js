@@ -2,10 +2,11 @@
 // current week), plan overview, backup/restore, reset.
 
 import { loadState, saveState, resetState, exportState, importState } from '../storage.js';
-import { GOALS, replanFrom, pacesForProfile, vdotBreakdown, defaultRunDays } from '../plangen.js';
+import { GOALS, replanFrom, pacesForProfile, vdotBreakdown, defaultRunDays, runDaysOf, longDayOf, recentLoadKm } from '../plangen.js';
+import { buildIcs } from '../ics.js';
 import { vdotFromRace } from '../paces.js';
 import { estimateMaxHR, resolveMaxHR, targetHR } from '../hr.js';
-import { todayStr, addDays, esc, fmtPaceDisplay, fmtPaceRangeDisplay, kmToUnit, unitToKm } from '../util.js';
+import { todayStr, addDays, mondayOf, esc, fmtPaceDisplay, fmtPaceRangeDisplay, kmToUnit, unitToKm, DAY_ABBR, DAY_NAMES } from '../util.js';
 import { openModal, closeModal } from '../wkfmt.js';
 
 const HR_ZONES = [
@@ -21,7 +22,7 @@ const RACE_INPUT_DISTS = [
   { key: 'marathon', label: 'Marathon', km: 42.195 },
 ];
 
-export function renderSettings(container, refresh, restartOnboarding) {
+export function renderSettings(container, refresh, restartOnboarding, action = null) {
   const state = loadState();
   const { profile, plan, settings } = state;
   const units = settings.units;
@@ -57,7 +58,8 @@ export function renderSettings(container, refresh, restartOnboarding) {
       <h3 style="margin-bottom:8px">Goal &amp; plan</h3>
       <div class="pr-row"><span class="k">Goal</span><span class="v">${g.label}</span></div>
       ${profile.raceDate ? `<div class="pr-row"><span class="k">Race date</span><span class="v">${esc(profile.raceDate)}</span></div>` : ''}
-      <div class="pr-row"><span class="k">Run days</span><span class="v">${profile.daysPerWeek} / week</span></div>
+      <div class="pr-row"><span class="k">Run days</span><span class="v">${runDaysOf(profile).map((d) => DAY_ABBR[d]).join(' ')}</span></div>
+      <div class="pr-row"><span class="k">Long run</span><span class="v">${DAY_NAMES[longDayOf(profile)]}</span></div>
       <div class="pr-row"><span class="k">Experience</span><span class="v" style="text-transform:capitalize">${profile.experience}</span></div>
       <div class="btn-row"><button class="btn secondary" id="edit-goal">Change goal or schedule</button></div>
     </div>
@@ -84,6 +86,7 @@ export function renderSettings(container, refresh, restartOnboarding) {
         <button class="btn tertiary" id="export-data">Export data</button>
         <button class="btn tertiary" id="import-data">Import data</button>
       </div>
+      <div class="btn-row"><button class="btn ghost" id="export-ics">Add plan to my calendar (.ics)</button></div>
       <div class="btn-row"><button class="btn ghost danger" id="reset-all">Erase everything &amp; start over</button></div>
     </div>
     <input type="file" id="import-file" accept="application/json" hidden>
@@ -105,6 +108,14 @@ export function renderSettings(container, refresh, restartOnboarding) {
     a.download = `stride-backup-${todayStr()}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
+  });
+  container.querySelector('#export-ics').addEventListener('click', () => {
+    const blob = new Blob([buildIcs(state)], { type: 'text/calendar' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'stride-plan.ics';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   });
   const fileInput = container.querySelector('#import-file');
   container.querySelector('#import-data').addEventListener('click', () => fileInput.click());
@@ -128,6 +139,7 @@ export function renderSettings(container, refresh, restartOnboarding) {
       resetState(); closeModal(); restartOnboarding();
     });
   });
+  if (action === 'edit-goal') openGoalModal(refresh);
 }
 
 function renderHeartRateCard(profile) {
@@ -184,27 +196,67 @@ function wireHeartRateCard(container, profile, refresh) {
 function openGoalModal(refresh) {
   const state = loadState();
   const { profile } = state;
+  let days = runDaysOf(profile).slice();
+  let longDay = longDayOf(profile);
   const goalOpts = Object.entries(GOALS).map(([k, g]) =>
     `<option value="${k}" ${profile.goal === k ? 'selected' : ''}>${g.label}</option>`).join('');
   const el = openModal(`
     <button class="modal-close" aria-label="Close">×</button>
     <h2>Change goal or schedule</h2>
-    <p class="sub">Past weeks and logs are kept; the plan regenerates from this week.</p>
-    <div class="field"><label>Goal</label><select id="gm-goal">${goalOpts}</select></div>
+    <p class="sub">Past weeks and logs are kept. The plan regenerates from this week (or from next Monday if you've already logged this week), continuing from your current training load.</p>
+    <div class="field"><label for="gm-goal">Goal</label><select id="gm-goal">${goalOpts}</select></div>
     <div class="field" id="gm-date-wrap" ${profile.goal === 'fitness' ? 'hidden' : ''}>
-      <label>Race date</label>
+      <label for="gm-date">Race date</label>
       <input type="date" id="gm-date" min="${addDays(todayStr(), 7)}" value="${profile.raceDate || ''}">
     </div>
-    <div class="field"><label>Run days per week</label>
+    <div class="field"><label for="gm-days">Run days per week</label>
       <select id="gm-days">${[2, 3, 4, 5, 6, 7].map((n) =>
-        `<option value="${n}" ${profile.daysPerWeek === n ? 'selected' : ''}>${n}</option>`).join('')}</select>
+        `<option value="${n}" ${days.length === n ? 'selected' : ''}>${n}</option>`).join('')}</select>
     </div>
-    <div class="field"><label>Experience</label>
+    <div class="field"><label>Which days</label>
+      <div class="day-chips" id="gm-daychips"></div>
+      <p class="hint" id="gm-dayhint"></p>
+    </div>
+    <div class="field"><label>Long run day</label>
+      <div class="seg" id="gm-long">
+        <button type="button" data-long="5">Saturday</button>
+        <button type="button" data-long="6">Sunday</button>
+      </div>
+    </div>
+    <div class="field"><label for="gm-exp">Experience</label>
       <select id="gm-exp">${['beginner', 'intermediate', 'advanced', 'elite'].map((x) =>
         `<option value="${x}" ${profile.experience === x ? 'selected' : ''}>${x[0].toUpperCase() + x.slice(1)}</option>`).join('')}</select>
     </div>
     <div class="btn-row"><button class="btn primary" id="gm-save">Rebuild my plan</button></div>
   `);
+  const chips = el.querySelector('#gm-daychips');
+  const paint = () => {
+    if (!days.includes(longDay)) days = [...days, longDay].sort((a, b) => a - b);
+    chips.innerHTML = DAY_ABBR.map((d, i) => `<button type="button" data-rd="${i}" class="${days.includes(i) ? 'on' : ''} ${i === longDay ? 'long' : ''}" aria-pressed="${days.includes(i)}">${d}</button>`).join('');
+    el.querySelector('#gm-days').value = String(days.length);
+    el.querySelectorAll('#gm-long button').forEach((b) => b.classList.toggle('on', +b.dataset.long === longDay));
+    el.querySelector('#gm-dayhint').textContent = days.length < 2
+      ? 'Pick at least 2 days.'
+      : `${days.length} days · long run ${DAY_NAMES[longDay]}. Key sessions are placed as far from each other and the long run as your days allow.`;
+    el.querySelector('#gm-save').disabled = days.length < 2;
+    chips.querySelectorAll('[data-rd]').forEach((b) => b.addEventListener('click', () => {
+      const d = +b.dataset.rd;
+      if (d === longDay) return; // the long-run day stays a run day
+      days = days.includes(d) ? days.filter((x) => x !== d) : [...days, d].sort((a, b) => a - b);
+      paint();
+    }));
+  };
+  paint();
+  el.querySelector('#gm-days').addEventListener('change', (e) => {
+    days = defaultRunDays(parseInt(e.target.value, 10), longDay);
+    paint();
+  });
+  el.querySelectorAll('#gm-long button').forEach((b) => b.addEventListener('click', () => {
+    const n = days.length;
+    longDay = +b.dataset.long;
+    days = defaultRunDays(n, longDay);
+    paint();
+  }));
   const goalSel = el.querySelector('#gm-goal');
   goalSel.addEventListener('change', () => {
     el.querySelector('#gm-date-wrap').hidden = goalSel.value === 'fitness';
@@ -216,9 +268,9 @@ function openGoalModal(refresh) {
     if (goal !== profile.goal) profile.goalTimeSec = null; // stale for a new distance
     profile.goal = goal;
     profile.raceDate = raceDate;
-    const nDays = parseInt(el.querySelector('#gm-days').value, 10);
-    if (nDays !== profile.daysPerWeek) profile.runDays = defaultRunDays(nDays, profile.longRunDay ?? 5);
-    profile.daysPerWeek = nDays;
+    profile.daysPerWeek = days.length;
+    profile.runDays = days.slice();
+    profile.longRunDay = longDay;
     profile.experience = el.querySelector('#gm-exp').value;
     state.plan = replanFrom(state.plan, profile, todayStr());
     saveState();
@@ -230,6 +282,7 @@ function openGoalModal(refresh) {
 function openFitnessModal(refresh) {
   const state = loadState();
   const { profile, settings } = state;
+  const currentLoad = recentLoadKm(state.plan, addDays(mondayOf(todayStr()), 7)) ?? profile.weeklyKm;
   const distOpts = RACE_INPUT_DISTS.map((d) => `<option value="${d.key}">${d.label}</option>`).join('');
   const el = openModal(`
     <button class="modal-close" aria-label="Close">×</button>
@@ -244,7 +297,8 @@ function openFitnessModal(refresh) {
       </div>
     </div>
     <div class="field"><label>Current weekly distance (${settings.units})</label>
-      <input type="number" inputmode="decimal" min="0" id="fm-weekly" value="${Math.round(kmToUnit(profile.weeklyKm, settings.units))}"></div>
+      <input type="number" inputmode="decimal" min="0" id="fm-weekly" value="${Math.round(kmToUnit(currentLoad, settings.units))}"></div>
+    <p class="hint">Prefilled with your current planned week. The rebuilt plan continues from this volume.</p>
     <div class="btn-row"><button class="btn primary" id="fm-save">Recalculate &amp; adapt plan</button></div>
   `);
   el.querySelector('#fm-save').addEventListener('click', () => {
@@ -253,13 +307,14 @@ function openFitnessModal(refresh) {
       + (parseInt(el.querySelector('#fm-m').value || 0, 10) * 60)
       + parseInt(el.querySelector('#fm-s').value || 0, 10);
     const weekly = parseFloat(el.querySelector('#fm-weekly').value);
-    if (weekly >= 0) profile.weeklyKm = unitToKm(weekly, settings.units);
+    const startKm = weekly > 0 ? unitToKm(weekly, settings.units) : currentLoad;
+    if (weekly > 0) profile.weeklyKm = startKm;
     if (sec >= 240) {
       profile.refRace = { distKm: d.km, timeSec: sec, label: d.label };
       profile.vdot = Math.round(vdotFromRace(d.km, sec) * 10) / 10;
       profile.vdotDate = todayStr(); // re-anchor the fitness-progression clock
     }
-    state.plan = replanFrom(state.plan, profile, todayStr());
+    state.plan = replanFrom(state.plan, profile, todayStr(), { startKm });
     saveState();
     closeModal();
     refresh();

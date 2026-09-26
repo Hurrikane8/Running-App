@@ -3,7 +3,7 @@
 import { loadState, saveState } from '../storage.js';
 import { GOALS, generatePlan, planWeeksFor, planRecommendation, defaultRunDays } from '../plangen.js';
 import { vdotFromRace, DEFAULT_VDOT } from '../paces.js';
-import { esc, unitToKm, todayStr, addDays, mondayOf } from '../util.js';
+import { esc, unitToKm, todayStr, addDays, mondayOf, DAY_ABBR, DAY_NAMES } from '../util.js';
 
 const RACE_INPUT_DISTS = [
   { key: '1mi', label: '1 mile', km: 1.609 },
@@ -21,7 +21,7 @@ const INJURY_OPTS = [
 const draft = {
   mode: null, // 'date' (pick a race date) | 'goaltime' (work backward from a goal time)
   goal: null, raceDate: null, experience: null,
-  units: 'km', weeklyDist: '', daysPerWeek: null,
+  units: 'km', weeklyDist: '', daysPerWeek: null, runDays: null, longRunDay: 5,
   refDist: '', refH: '', refM: '', refS: '',
   gH: '', gM: '', gS: '', tier: null,
   injuries: [],
@@ -150,6 +150,13 @@ function stepAbility() {
     <h1>Current fitness</h1>
     <p class="lead">Your typical week now, plus a recent race or time trial if you have one. It makes your pace targets much more accurate.</p>
     <div class="field">
+      <label>Units</label>
+      <div class="seg" id="ob-units">
+        <button type="button" data-units="km" class="${draft.units === 'km' ? 'on' : ''}">Kilometres</button>
+        <button type="button" data-units="mi" class="${draft.units === 'mi' ? 'on' : ''}">Miles</button>
+      </div>
+    </div>
+    <div class="field">
       <label>Current weekly distance (${draft.units})</label>
       <input type="number" inputmode="decimal" min="0" max="300" id="ob-weekly" value="${esc(draft.weeklyDist)}" placeholder="e.g. 20">
     </div>
@@ -165,7 +172,7 @@ function stepAbility() {
       <div class="field"><label>Minutes</label><input type="number" inputmode="numeric" min="0" max="59" id="ob-m" value="${esc(draft.refM)}" placeholder="25"></div>
       <div class="field"><label>Seconds</label><input type="number" inputmode="numeric" min="0" max="59" id="ob-s" value="${esc(draft.refS)}" placeholder="0"></div>
     </div>
-    <p class="hint">No recent time? No problem. You can run a time trial later and update your fitness in Settings.</p>
+    <p class="hint">No recent time? No problem. Your plan starts with a short time trial that calibrates every pace.</p>
     ${navButtons(abilityValid())}`;
 }
 
@@ -249,11 +256,26 @@ function stepDays() {
     <button class="opt ${draft.daysPerWeek === n ? 'selected' : ''}" data-days="${n}" style="text-align:center">
       <b style="font-size:20px">${n}</b><small>days / week</small>
     </button>`).join('');
+  const days = draft.runDays || [];
+  const picker = draft.daysPerWeek ? `
+    <div class="field" style="margin-top:22px"><label>Which days? (tap to change)</label>
+      <div class="day-chips" id="ob-daychips">
+        ${DAY_ABBR.map((d, i) => `<button type="button" data-rd="${i}" class="${days.includes(i) ? 'on' : ''} ${i === draft.longRunDay ? 'long' : ''}" aria-pressed="${days.includes(i)}">${d}</button>`).join('')}
+      </div>
+    </div>
+    <div class="field"><label>Long run day</label>
+      <div class="seg" id="ob-long">
+        <button type="button" data-long="5" class="${draft.longRunDay === 5 ? 'on' : ''}">Saturday</button>
+        <button type="button" data-long="6" class="${draft.longRunDay === 6 ? 'on' : ''}">Sunday</button>
+      </div>
+      <p class="hint">Hard sessions are spaced as far from each other and from the long run as your days allow.</p>
+    </div>` : '';
   return `
     <h1>How many days can you run?</h1>
     <p class="lead">Be realistic. A plan you can hit beats a plan you admire.</p>
     <div class="opt-grid two">${opts}</div>
-    ${navButtons(!!draft.daysPerWeek)}`;
+    ${picker}
+    ${navButtons(!!draft.daysPerWeek && days.length >= 2)}`;
 }
 
 function stepInjuries() {
@@ -277,21 +299,15 @@ function stepUnitsConfirm() {
     : '';
   return `
     <h1>Almost there</h1>
-    <p class="lead">Choose your units, then we'll build the plan.</p>
-    <div class="field">
-      <label>Distance units</label>
-      <div class="seg" id="ob-units">
-        <button data-units="km" class="${draft.units === 'km' ? 'on' : ''}">Kilometres</button>
-        <button data-units="mi" class="${draft.units === 'mi' ? 'on' : ''}">Miles</button>
-      </div>
-    </div>
+    <p class="lead">Here's what we'll build.</p>
     <div class="card" style="margin-top:20px">
       <h3 style="margin-bottom:10px">Your plan</h3>
       <div class="pr-row"><span class="k">Goal</span><span class="v">${g.label}</span></div>
       ${draft.raceDate ? `<div class="pr-row"><span class="k">Race date</span><span class="v">${esc(draft.raceDate)}</span></div>` : ''}
       ${goalLine}
       <div class="pr-row"><span class="k">Length</span><span class="v">${weeks} weeks</span></div>
-      <div class="pr-row"><span class="k">Run days</span><span class="v">${draft.daysPerWeek} / week</span></div>
+      <div class="pr-row"><span class="k">Run days</span><span class="v">${(draft.runDays || []).map((d) => DAY_ABBR[d]).join(' ')}</span></div>
+      <div class="pr-row"><span class="k">Long run</span><span class="v">${DAY_NAMES[draft.longRunDay]}</span></div>
     </div>
     ${navButtons(true, 'Generate my plan')}`;
 }
@@ -348,7 +364,27 @@ function wire(container, onDone) {
   container.querySelectorAll('[data-exp]').forEach((b) =>
     b.addEventListener('click', () => { draft.experience = b.dataset.exp; rerender(); }));
   container.querySelectorAll('[data-days]').forEach((b) =>
-    b.addEventListener('click', () => { draft.daysPerWeek = parseInt(b.dataset.days, 10); rerender(); }));
+    b.addEventListener('click', () => {
+      draft.daysPerWeek = parseInt(b.dataset.days, 10);
+      draft.runDays = defaultRunDays(draft.daysPerWeek, draft.longRunDay);
+      rerender();
+    }));
+  container.querySelectorAll('#ob-daychips [data-rd]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const d = +b.dataset.rd;
+      if (d === draft.longRunDay) return;
+      const set = new Set(draft.runDays || []);
+      set.has(d) ? set.delete(d) : set.add(d);
+      draft.runDays = [...set].sort((x, y) => x - y);
+      draft.daysPerWeek = draft.runDays.length;
+      rerender();
+    }));
+  container.querySelectorAll('#ob-long [data-long]').forEach((b) =>
+    b.addEventListener('click', () => {
+      draft.longRunDay = +b.dataset.long;
+      draft.runDays = defaultRunDays(draft.daysPerWeek, draft.longRunDay);
+      rerender();
+    }));
   container.querySelectorAll('[data-injury]').forEach((b) =>
     b.addEventListener('click', () => {
       const k = b.dataset.injury;

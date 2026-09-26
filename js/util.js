@@ -111,12 +111,20 @@ export function fmtPaceDisplay(secPerKm, settings) {
   return fmtPace(secPerKm, settings.units);
 }
 
-// [slowSecPerKm, fastSecPerKm] → "6:42-5:57 /km" (or "6.2-7.5 mph" on treadmill)
+// [slowSecPerKm, fastSecPerKm] → "5:57–6:42 /km" (or "6.2–7.5 mph" on
+// treadmill): numbers ascending, en dash, like any printed pace chart.
 export function fmtPaceRangeDisplay([slow, fast], settings) {
   if (settings.paceDisplay === 'treadmill') {
-    return `${paceToMph(slow).toFixed(1)}-${paceToMph(fast).toFixed(1)} mph`;
+    return `${paceToMph(slow).toFixed(1)}–${paceToMph(fast).toFixed(1)} mph`;
   }
-  return `${fmtPaceNum(slow, settings.units)}-${fmtPaceNum(fast, settings.units)} /${settings.units}`;
+  return `${fmtPaceNum(fast, settings.units)}–${fmtPaceNum(slow, settings.units)} /${settings.units}`;
+}
+
+// seconds → "20 h 51 min" / "48 min" (durations, not race clocks)
+export function fmtDuration(sec) {
+  const m = Math.round(sec / 60);
+  const h = Math.floor(m / 60);
+  return h ? `${h} h ${m % 60} min` : `${m} min`;
 }
 
 export function roundHalf(x) {
