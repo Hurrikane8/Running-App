@@ -1,7 +1,7 @@
 // "Today" view: today's workout, missed-workout reshuffle offer, quick actions.
 
 import { loadState, saveState } from '../storage.js';
-import { workoutsOn, weekOf, missedWorkouts, reshuffleWeek, GOALS, goalPrediction } from '../plangen.js';
+import { workoutsOn, weekOf, missedWorkouts, reshuffleWeek, GOALS, projectedRaceTime } from '../plangen.js';
 import { todayStr, fmtDateLong, fmtTime, esc, diffDays } from '../util.js';
 import { chipFor, targetLine, structureRows, openLogModal } from '../wkfmt.js';
 
@@ -28,7 +28,9 @@ export function renderToday(container, refresh) {
   // Countdown / goal strip — wide accent readout
   if (plan?.raceDate && diffDays(today, plan.raceDate) >= 0) {
     const days = diffDays(today, plan.raceDate);
-    const pred = goalPrediction(profile, plan, state.extraLogs);
+    // Same race-day projection as the Plan tab and the race-day pace target.
+    const proj = projectedRaceTime(profile, plan, state.extraLogs);
+    const pred = proj?.projected ?? proj?.current;
     html += `<div class="race-strip">
       <div>
         <div class="rs-days">${days}</div>

@@ -601,3 +601,9 @@ a { color: var(--accent-text); }
   .modal-scrim { align-items: center; }
   .modal { border-radius: 26px; }
 }
+
+/* ---- v2 additions: log form ---- */
+.check-row { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; margin: 2px 0 16px; cursor: pointer; }
+.check-row input { width: 20px; height: 20px; accent-color: var(--accent); flex: 0 0 auto; }
+.check-row .hint { margin: 0; font-weight: 500; }
+.split { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; }

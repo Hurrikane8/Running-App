@@ -9,7 +9,7 @@ import { todayStr, addDays, esc, fmtPaceDisplay, fmtPaceRangeDisplay, kmToUnit, 
 import { openModal, closeModal } from '../wkfmt.js';
 
 const HR_ZONES = [
-  ['recovery', 'Recovery'], ['easy', 'Easy'], ['marathon', 'Goal pace'],
+  ['recovery', 'Recovery'], ['easy', 'Easy'], ['marathon', 'Marathon'],
   ['threshold', 'Threshold'], ['interval', 'Interval'],
 ];
 
@@ -70,8 +70,8 @@ export function renderSettings(container, refresh, restartOnboarding) {
       <div class="pr-row"><span class="k">Threshold</span><span class="v">${fmtPaceDisplay(p.threshold, settings)}</span></div>
       <div class="pr-row"><span class="k">Interval</span><span class="v">${fmtPaceDisplay(p.interval, settings)}</span></div>
       ${fb.nPoints > 0
-        ? `<p class="hint">Sharpened using ${fb.nPoints} recent logged effort${fb.nPoints === 1 ? '' : 's'} (in addition to your entered baseline of ${profile.vdot}).</p>`
-        : '<p class="hint">Log a few tempo, interval, or race efforts and paces will sharpen to match how you actually run.</p>'}
+        ? `<p class="hint">Sharpened by ${fb.nPoints} logged effort${fb.nPoints === 1 ? '' : 's'}: you're running ${Math.abs(fb.residual).toFixed(1)} VDOT ${fb.residual >= 0 ? 'ahead of' : 'behind'} the plan's projection (entered baseline ${profile.vdot}).</p>`
+        : '<p class="hint">Paces sharpen from real efforts: log a race or time trial, or enter the main-set pace when you log a tempo, interval or goal-pace session.</p>'}
       <div class="btn-row"><button class="btn secondary" id="edit-fitness">Update fitness (new race / time trial)</button></div>
     </div>
 

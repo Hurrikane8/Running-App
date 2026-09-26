@@ -567,8 +567,9 @@ export function estimateRaceTime(vdot, distKm) {
 //
 // A workout's *target* pace is derived forward from VDOT (paceAtFraction).
 // This runs the same relationship in reverse: given the actual pace a
-// logged quality session was run at, and the fixed intensity fraction that
-// session type represents, solve for the VDOT that would have produced it.
+// quality session's MAIN SET was run at (entered by the runner), and the
+// fixed intensity fraction of that zone, solve for the VDOT that would have
+// produced it.
 // Races/time-trials (a real, known duration) use the more precise
 // duration-based Daniels curve (vdotFromRace) instead of a fixed fraction.
 const EFFORT_FRACTION = {
@@ -579,66 +580,135 @@ const EFFORT_FRACTION = {
 };
 const EVIDENCE_HALF_LIFE_DAYS = 21; // recent efforts count more; ~3-week memory
 const MIN_EFFORT_KM = 1.5;
-const MIN_EFFORT_SEC = 240; // effort too short to trust as a fitness signal
+const MIN_EFFORT_SEC = 240; // race/time trial too short to trust as a fitness signal
 
-// Easy/long/recovery runs are deliberately run well below capacity, so their
-// pace says little about fitness — only genuine efforts (quality sessions,
-// races, and near-maximal ad-hoc runs) are used as evidence.
-function fitnessEvidencePoints(plan, extraLogs, asOfDate) {
+// Workouts generated before the structured `work` field existed: map the
+// session type to the pace zone its main set was run at.
+const LEGACY_WORK_KEY = { tempo: 'threshold', intervals: 'interval', reps: 'rep', mpace: 'marathon' };
+
+// The pace zone of a workout's main set (null for sessions with no
+// pace-defined main set: easy/long/hills/strides/cross-training).
+export function workPaceKey(w) {
+  if (w.work) return w.work.paceKey || null;
+  return LEGACY_WORK_KEY[w.type] || null;
+}
+
+// How hard a correctly-executed main set should feel (RPE 1-10). Goal-pace
+// effort depends on the race distance.
+const EXPECTED_RPE = { threshold: 7, interval: 8, rep: 8, marathon: 5.5 };
+const GOALPACE_RPE = { '5k': 8, '10k': 7.5, half: 6.5, marathon: 5.5 };
+export function expectedRpe(paceKey, goal) {
+  if (paceKey === 'goalpace') return GOALPACE_RPE[goal] ?? 7;
+  return EXPECTED_RPE[paceKey] ?? null;
+}
+
+// VDOT implied by a main set run at `paceSec` (sec/km) in zone `paceKey`.
+// Fixed-fraction zones invert paceAtFraction; goal pace inverts the race
+// prediction at the goal distance (goal pace = projected race pace).
+function vdotFromWorkPace(paceKey, paceSec, goal) {
+  if (paceKey === 'goalpace') {
+    const d = GOALS[goal]?.distKm;
+    return d ? vdotFromRace(d, paceSec * d) : null;
+  }
+  const frac = EFFORT_FRACTION[paceKey];
+  return frac ? impliedVdotFromEffort(1, paceSec, frac) : null;
+}
+
+// Fitness reading from one logged workout, or null if it carries none.
+//
+// Only genuine, well-defined efforts count:
+//  - races and time trials: the logged distance/time IS the effort → the
+//    duration-based Daniels curve, full confidence;
+//  - quality sessions, ONLY when the runner entered the pace of the main
+//    set. The whole-session average (warm-up + cool-down + recovery jogs)
+//    says nothing about the effort — reading it at threshold/interval
+//    intensity made perfectly executed sessions look 6-13 VDOT "slower".
+// RPE refines the reading: a main set that felt harder than the session
+// calls for was run at a higher fraction of VO2max than assumed, so the
+// implied fitness is scaled down (and up if it felt easier) by ~1.3% per
+// RPE point, capped at ±2 points.
+export function workoutEvidence(w, goal) {
+  if (w.status !== 'done' || !w.log) return null;
+  const log = w.log;
+  if (w.type === 'race' || w.type === 'tt') {
+    if (!(log.distKm >= MIN_EFFORT_KM && log.durSec >= MIN_EFFORT_SEC)) return null;
+    return { vdot: vdotFromRace(log.distKm, log.durSec), conf: 1.0, kind: w.type };
+  }
+  const key = workPaceKey(w);
+  if (!key || !(log.workPaceSec > 0)) return null;
+  let vdot = vdotFromWorkPace(key, log.workPaceSec, goal);
+  if (vdot == null) return null;
+  const exp = expectedRpe(key, goal);
+  if (log.rpe && exp != null) vdot *= 1 - 0.013 * clamp(log.rpe - exp, -2, 2);
+  return { vdot, conf: 0.6, kind: 'session' };
+}
+
+// Evidence points dated within [profile.vdotDate, asOfDate]. Anything before
+// the fitness anchor is superseded by the newer race/test that set it.
+function fitnessEvidencePoints(profile, plan, extraLogs, asOfDate) {
   const points = [];
-  const add = (date, vdot, conf) => {
-    if (date > asOfDate) return;
-    if (!(vdot > 15 && vdot < 85)) return; // reject bad/garbled log data
-    points.push({ date, vdot, conf });
+  const since = profile.vdotDate || '0000-00-00';
+  const add = (date, ev, title) => {
+    if (!ev || date > asOfDate || date < since) return;
+    if (!(ev.vdot > 15 && ev.vdot < 85)) return; // reject bad/garbled log data
+    points.push({ date, title, ...ev });
   };
+  const goal = plan?.goal || profile.goal;
   if (plan) {
     for (const wk of plan.weeks) {
-      for (const w of wk.workouts) {
-        if (w.status !== 'done' || !w.log?.distKm || !w.log?.durSec) continue;
-        if (w.log.distKm < MIN_EFFORT_KM || w.log.durSec < MIN_EFFORT_SEC) continue;
-        if (w.type === 'race') add(w.date, vdotFromRace(w.log.distKm, w.log.durSec), 1.0);
-        else if (EFFORT_FRACTION[w.paceKey]) {
-          add(w.date, impliedVdotFromEffort(w.log.distKm, w.log.durSec, EFFORT_FRACTION[w.paceKey]), 0.6);
-        }
-      }
+      for (const w of wk.workouts) add(w.date, workoutEvidence(w, goal), w.title);
     }
   }
   for (const e of extraLogs || []) {
-    // An unplanned run only tells us fitness if it was run near-maximally —
-    // treat a high-RPE ad-hoc effort as an informal time trial.
-    if (e.rpe >= 9 && e.distKm >= MIN_EFFORT_KM && e.durSec >= MIN_EFFORT_SEC) {
-      add(e.date, vdotFromRace(e.distKm, e.durSec), 0.8);
+    // An unplanned run is evidence only when flagged as a race / time trial.
+    if (e.race && e.distKm >= MIN_EFFORT_KM && e.durSec >= MIN_EFFORT_SEC) {
+      add(e.date, { vdot: vdotFromRace(e.distKm, e.durSec), conf: 1.0, kind: 'race' }, 'Race / time trial');
     }
   }
-  return points;
+  return points.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-// Full picture behind the effective VDOT on a date: the assumption-based
-// baseline (entered fitness + capped generic weekly gain, same as before),
-// the recency-weighted VDOT implied by real logged efforts (null if none
-// exist yet), and the blend actually used. Trust in the measured signal
-// grows with how much evidence exists, so one lucky or bad session can nudge
-// the estimate but never fully override it.
-export function vdotBreakdown(profile, dateStr, plan = null, extraLogs = []) {
+// Assumption-based fitness on a date: entered VDOT plus the capped,
+// experience-scaled weekly gain since the fitness anchor.
+function baselineAt(profile, dateStr) {
   const anchor = profile.vdotDate || dateStr;
   const weeks = Math.max(0, diffDays(anchor, dateStr) / 7);
   const gain = Math.min(weeks * VDOT_GAIN_RATE[profile.experience],
     VDOT_GAIN_CAP[profile.experience]);
-  const baseline = profile.vdot + gain;
+  return profile.vdot + gain;
+}
 
-  const points = fitnessEvidencePoints(plan, extraLogs, dateStr);
-  if (!points.length) return { baseline, measured: null, blended: baseline, nPoints: 0, trust: 0 };
-
-  let wsum = 0, vsum = 0;
+// Full picture behind the effective VDOT on a date.
+//
+// Residual model: each evidence point is compared with the baseline ON ITS
+// OWN DATE ("were you ahead of or behind the projection then?"). The
+// recency-weighted mean residual then shifts the baseline trajectory, scaled
+// by trust. This keeps the planned gain intact when projecting forward — an
+// on-target session leaves the race-day projection unchanged instead of
+// dragging a future date down to a past fitness level.
+// Trust grows with the summed confidence of the evidence (one race ≈ 0.45,
+// one paced session ≈ 0.35, capped at 0.85), so a single outlier nudges
+// rather than overrides.
+export function vdotBreakdown(profile, dateStr, plan = null, extraLogs = []) {
+  const baseline = baselineAt(profile, dateStr);
+  const points = fitnessEvidencePoints(profile, plan, extraLogs, dateStr);
+  if (!points.length) {
+    return { baseline, measured: null, blended: baseline, nPoints: 0, trust: 0, residual: 0, points };
+  }
+  let wsum = 0, rsum = 0, csum = 0;
   for (const p of points) {
     const age = Math.max(0, diffDays(p.date, dateStr));
-    const recency = Math.pow(0.5, age / EVIDENCE_HALF_LIFE_DAYS);
-    const w = p.conf * recency;
-    wsum += w; vsum += w * p.vdot;
+    const w = p.conf * Math.pow(0.5, age / EVIDENCE_HALF_LIFE_DAYS);
+    wsum += w;
+    rsum += w * (p.vdot - baselineAt(profile, p.date));
+    csum += p.conf;
   }
-  const measured = vsum / wsum;
-  const trust = clamp(0.25 + points.length * 0.15, 0.25, 0.85);
-  return { baseline, measured, blended: trust * measured + (1 - trust) * baseline, nPoints: points.length, trust };
+  const residual = rsum / wsum;
+  const trust = clamp(0.2 + 0.25 * csum, 0.2, 0.85);
+  return {
+    baseline, measured: baseline + residual, blended: baseline + trust * residual,
+    nPoints: points.length, trust, residual, points,
+  };
 }
 
 // Effective VDOT on a given date: baseline projection blended with whatever
@@ -676,6 +746,16 @@ export function projectedRaceTime(profile, plan, extraLogs = []) {
 export function racePaceForDate(profile, dateStr, distKm, plan = null, extraLogs = []) {
   const vdot = vdotForDate(profile, dateStr, plan, extraLogs);
   return estimateRaceTime(vdot, distKm) / distKm;
+}
+
+// Goal pace (sec/km): the projected race-day pace for the goal distance —
+// the pace goal-pace sessions rehearse all plan long, and exactly the pace
+// the race-day workout and "Projected finish" use. null without a race.
+export function goalPaceSec(profile, plan = null, extraLogs = []) {
+  const d = GOALS[profile.goal]?.distKm;
+  const raceDate = plan?.raceDate || profile.raceDate;
+  if (!d || !raceDate) return null;
+  return racePaceForDate(profile, raceDate, d, plan, extraLogs);
 }
 
 // Regenerate future weeks (from the current week) after a profile change,

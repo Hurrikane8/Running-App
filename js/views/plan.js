@@ -15,7 +15,7 @@ export function renderPlan(container) {
 
   const fb = vdotBreakdown(profile, today, plan, state.extraLogs);
   const evidenceLine = fb.nPoints > 0
-    ? `<p class="hint" style="margin-top:6px">Blends your entered fitness with ${fb.nPoints} recent logged effort${fb.nPoints === 1 ? '' : 's'}.</p>`
+    ? `<p class="hint" style="margin-top:6px">Adjusted by ${fb.nPoints} logged effort${fb.nPoints === 1 ? '' : 's'}: ${Math.abs(fb.residual).toFixed(1)} VDOT ${fb.residual >= 0 ? 'ahead of' : 'behind'} the plan's projection.</p>`
     : '';
 
   let hero = '';

@@ -10,8 +10,9 @@
 import {
   GOALS, generatePlan, replanFrom, estimateRaceTime, pacesForDate,
   projectedRaceTime, racePaceForDate, reshuffleWeek, missedWorkouts,
+  vdotBreakdown, vdotForDate, workPaceKey,
 } from '../js/plangen.js';
-import { trainingPaces, vdotFromRace } from '../js/paces.js';
+import { trainingPaces, vdotFromRace, predictRace } from '../js/paces.js';
 import { estimateMaxHR, resolveMaxHR, targetHR, HR_ZONE_FRACTIONS } from '../js/hr.js';
 import { STATE_VERSION, importState } from '../js/storage.js';
 import { todayStr, addDays, mondayOf, diffDays, dayIndex } from '../js/util.js';
@@ -326,6 +327,80 @@ console.log('\n=== reshuffle ===');
   check('reshuffle keeps the long run (not skipped)', !longBefore || (longAfter && longAfter.status !== 'skipped'));
   check('reshuffle leaves no planned workout in the past', missedWorkouts(plan, thursday).length === 0,
     `${missedWorkouts(plan, thursday).length} still past`);
+}
+
+// ---------------------------------------------------------------------------
+// 8. Fitness evidence (regression: on-target sessions used to read as a big
+//    fitness DROP because whole-session averages include warm-up/jogs)
+// ---------------------------------------------------------------------------
+console.log('\n=== fitness evidence ===');
+{
+  const today = todayStr();
+  const created = addDays(mondayOf(today), -35);
+  const profile = makeProfile('5k', 'intermediate', 7, 40, 7);
+  profile.vdot = 42; profile.vdotDate = created;
+  const fresh = () => generatePlan(profile, created);
+  const past = (plan) => plan.weeks.flatMap((w) => w.workouts).filter((x) => x.date < today);
+  const quality = (plan) => past(plan).filter((x) => workPaceKey(x));
+  const base = vdotBreakdown(profile, today, null, []);
+  const raceDay = profile.raceDate;
+  const baseRace = vdotForDate(profile, raceDay, null, []);
+
+  // (a) whole-session logs only (warm-up + jogs included) → no evidence at all
+  const planA = fresh();
+  for (const x of past(planA)) {
+    const p = trainingPaces(42);
+    x.status = 'done';
+    x.log = { distKm: x.distKm || 5, durSec: Math.round((x.distKm || 5) * (p.easy[0] + p.easy[1]) / 2), rpe: 6 };
+  }
+  const bA = vdotBreakdown(profile, today, planA, []);
+  check('Whole-session averages are not fitness evidence', bA.nPoints === 0 && Math.abs(bA.blended - base.blended) < 1e-9,
+    `n=${bA.nPoints} blended ${bA.blended.toFixed(2)} vs ${base.blended.toFixed(2)}`);
+
+  // (b) main sets run exactly at target (target = baseline pace on that day)
+  const planB = fresh();
+  let nQ = 0;
+  for (const x of quality(planB)) {
+    const key = workPaceKey(x);
+    const target = pacesForDate(profile, x.date, null, [])[key];
+    if (!target) continue;
+    nQ++;
+    x.status = 'done';
+    x.log = { distKm: x.distKm, durSec: 2400, rpe: null, workPaceSec: target };
+  }
+  const bB = vdotBreakdown(profile, today, planB, []);
+  check('On-target main sets leave fitness unchanged (±0.3)', nQ > 0 && Math.abs(bB.blended - base.blended) <= 0.3,
+    `${nQ} sessions, blended ${bB.blended.toFixed(2)} vs baseline ${base.blended.toFixed(2)}`);
+  const rB = vdotForDate(profile, raceDay, planB, []);
+  check('On-target main sets keep the race-day projection (±0.3)', Math.abs(rB - baseRace) <= 0.3,
+    `${rB.toFixed(2)} vs ${baseRace.toFixed(2)}`);
+
+  // (c) RPE far above expectation lowers the reading
+  const planC = fresh();
+  for (const x of quality(planC)) {
+    const key = workPaceKey(x);
+    const target = pacesForDate(profile, x.date, null, [])[key];
+    if (!target) continue;
+    x.status = 'done';
+    x.log = { distKm: x.distKm, durSec: 2400, rpe: 10, workPaceSec: target };
+  }
+  check('Main sets that felt far too hard lower fitness', vdotBreakdown(profile, today, planC, []).blended < base.blended - 0.2);
+
+  // (d) a fast race lifts both today's fitness and the race-day projection
+  const fastV = base.baseline + 2;
+  const raceSec = predictRace(fastV, 5);
+  const extra = [{ id: 'r', date: addDays(today, -3), distKm: 5, durSec: raceSec, rpe: 10, race: true }];
+  const bD = vdotBreakdown(profile, today, null, extra);
+  const rD = vdotForDate(profile, raceDay, null, extra);
+  check('Fast race lifts today\'s fitness', bD.blended > base.blended + 0.5, `${bD.blended.toFixed(2)} vs ${base.blended.toFixed(2)}`);
+  check('Fast race lifts the race-day projection by the same residual', Math.abs((rD - baseRace) - (bD.blended - base.blended)) < 0.05,
+    `race-day +${(rD - baseRace).toFixed(2)} today +${(bD.blended - base.blended).toFixed(2)}`);
+  // an unflagged hard ad-hoc run is not a race
+  const unflagged = [{ ...extra[0], race: false }];
+  check('Unflagged ad-hoc run is not evidence', vdotBreakdown(profile, today, null, unflagged).nPoints === 0);
+  // evidence before the fitness anchor is superseded
+  const old = [{ ...extra[0], date: addDays(created, -10) }];
+  check('Evidence before vdotDate is ignored', vdotBreakdown(profile, today, null, old).nPoints === 0);
 }
 
 // ---------------------------------------------------------------------------

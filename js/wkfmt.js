@@ -1,9 +1,9 @@
 // Shared workout presentation helpers + the log-workout modal.
 
 import { loadState, saveState } from './storage.js';
-import { pacesForDate, racePaceForDate, GOALS } from './plangen.js';
+import { pacesForDate, racePaceForDate, goalPaceSec, workPaceKey, GOALS } from './plangen.js';
 import { targetHR } from './hr.js';
-import { fmtDist, fmtPaceDisplay, fmtPaceRangeDisplay, fmtTime, esc, kmToUnit, unitToKm, todayStr } from './util.js';
+import { fmtDist, fmtPace, fmtPaceDisplay, fmtPaceRangeDisplay, fmtTime, esc, kmToUnit, unitToKm, todayStr, KM_PER_MI } from './util.js';
 
 export const TYPE_LABEL = {
   easy: 'Easy', recovery: 'Recovery', long: 'Long run', tempo: 'Threshold',
@@ -53,13 +53,33 @@ export function targetLine(w, profile, settings, evidence = {}) {
   // HR_ZONE_FRACTIONS keys line up 1:1 with paceKey values (easy, recovery,
   // marathon, threshold, interval); 'rep' and 'racepace' intentionally have
   // no zone and targetHR() returns null for them.
-  const hr = profile ? targetHR(profile, w.paceKey) : null;
+  const hr = profile ? targetHR(profile, hrZoneFor(w.paceKey, profile.goal)) : null;
   if (hr) parts.push(`HR ${hr[0]}-${hr[1]}`);
   return parts.join(' · ');
 }
 
+// Goal-pace running sits in a different HR zone depending on the race
+// distance (5K pace is VO2max territory, marathon pace is not).
+const GOALPACE_HR_ZONE = { '5k': 'interval', '10k': 'threshold', half: 'threshold', marathon: 'marathon' };
+function hrZoneFor(paceKey, goal) {
+  return paceKey === 'goalpace' ? GOALPACE_HR_ZONE[goal] || null : paceKey;
+}
+
+const EFFORT_ONLY = {
+  hills: 'by effort (RPE 7-8)',
+  tt: 'hard, even effort (RPE 9)',
+  xtrain: null,
+};
+
 export function paceTarget(w, profile, settings, evidence = {}) {
-  if (!w.paceKey || !profile) return w.type === 'long' && !w.paceKey ? 'easy effort (RPE 3-4)' : null;
+  if (!w.paceKey || !profile) {
+    if (w.type === 'long') return 'easy effort (RPE 3-4)';
+    return EFFORT_ONLY[w.type] ?? null;
+  }
+  if (w.paceKey === 'goalpace') {
+    const gp = goalPaceSec(profile, evidence.plan, evidence.extraLogs);
+    return gp ? `goal pace ${fmtPaceDisplay(gp, settings)}` : null;
+  }
   // Race-day pace is distance-aware (matches "Projected finish"), not one of
   // the fixed intensity-fraction zones below — resolve it separately.
   if (w.paceKey === 'racepace') {
@@ -87,41 +107,46 @@ export function structureRows(w, profile, settings, evidence = {}) {
     `<div class="structure-row"><div class="structure-label">${k}</div><div class="structure-body">${v}</div></div>`).join('');
 }
 
+// Turn pace phrases in a structure line ("at threshold pace") into the
+// runner's actual numbers. One pass with a combined pattern, so inserted
+// markup is never re-matched, and the matched text keeps its own casing
+// ("Easy pace" at the start of a sentence stays capitalized). Distance reps
+// also get a per-rep split ("≈1:47 per 400 m") — what a track runner needs.
 function decoratePaces(text, w, profile, settings, evidence = {}) {
   if (!profile) return esc(text);
   const p = pacesForDate(profile, w.date, evidence.plan, evidence.extraLogs);
-  const map = {
-    'easy pace': `easy pace <span class="pace-pill">${fmtPaceRangeDisplay(p.easy, settings)}</span>`,
-    'recovery pace': `recovery pace <span class="pace-pill">${fmtPaceRangeDisplay(p.recovery, settings)}</span>`,
-    'threshold pace': `threshold pace <span class="pace-pill">${fmtPaceDisplay(p.threshold, settings)}</span>`,
-    'interval pace': `interval pace <span class="pace-pill">${fmtPaceDisplay(p.interval, settings)}</span>`,
-    'repetition pace': `repetition pace <span class="pace-pill">${fmtPaceDisplay(p.rep, settings)}</span>`,
-    // Genuinely marathon-effort (fixed 80% VO2max training zone) — only ever
-    // appears in mpace sessions and marathon-goal long runs, both of which
-    // are scheduled exclusively for goal === 'marathon' plans, where
-    // marathon effort really is the goal-race effort.
-    'marathon (goal) pace': `marathon (goal) pace <span class="pace-pill">${fmtPaceDisplay(p.marathon, settings)}</span>`,
-    'marathon pace': `marathon pace <span class="pace-pill">${fmtPaceDisplay(p.marathon, settings)}</span>`,
+  const gp = goalPaceSec(profile, evidence.plan, evidence.extraLogs);
+  const phrases = {
+    'easy pace': { txt: fmtPaceRangeDisplay(p.easy, settings) },
+    'recovery pace': { txt: fmtPaceRangeDisplay(p.recovery, settings) },
+    'threshold pace': { key: 'threshold', sec: p.threshold },
+    'interval pace': { key: 'interval', sec: p.interval },
+    'repetition pace': { key: 'rep', sec: p.rep },
+    // legacy marathon-goal workouts (fixed marathon-effort zone)
+    'marathon (goal) pace': { key: 'marathon', sec: p.marathon },
+    'marathon pace': { key: 'marathon', sec: p.marathon },
   };
-  // "goal pace" (used by the half-marathon long run's peak-phase tail
-  // segment) means "your actual goal race's pace" — distance-aware, same
-  // projection as "Projected finish" and race day, not the fixed marathon
-  // training zone (a half marathon is not run at marathon effort).
-  if (/goal pace/i.test(text)) {
-    const goalDistKm = GOALS[profile.goal]?.distKm;
-    if (goalDistKm) {
-      const goalPace = racePaceForDate(profile, w.date, goalDistKm, evidence.plan, evidence.extraLogs);
-      map['goal pace'] = `goal pace <span class="pace-pill">${fmtPaceDisplay(goalPace, settings)}</span>`;
-    }
-  }
+  // "goal pace" = projected race-day pace for the goal distance (same number
+  // as Projected finish and the race-day target), not a fixed zone.
+  if (gp) phrases['goal pace'] = { key: 'goalpace', sec: gp };
   // Race day's own "race pace" — distance-aware (matches Projected finish).
   if (w.paceKey === 'racepace' && w.distKm) {
-    const racePace = racePaceForDate(profile, w.date, w.distKm, evidence.plan, evidence.extraLogs);
-    map['race pace'] = `race pace <span class="pace-pill">${fmtPaceDisplay(racePace, settings)}</span>`;
+    phrases['race pace'] = { sec: racePaceForDate(profile, w.date, w.distKm, evidence.plan, evidence.extraLogs) };
   }
-  let out = esc(text);
-  for (const [k, v] of Object.entries(map)) out = out.replace(new RegExp(k, 'i'), v);
-  return out;
+  const keys = Object.keys(phrases).sort((a, b) => b.length - a.length)
+    .map((k) => k.replace(/[()]/g, '\\$&'));
+  const re = new RegExp(keys.join('|'), 'gi');
+  return esc(text).replace(re, (m) => {
+    const ph = phrases[m.toLowerCase()];
+    if (!ph) return m;
+    const val = ph.txt ?? fmtPaceDisplay(ph.sec, settings);
+    let split = '';
+    const repM = w.work?.repM;
+    if (ph.key && w.work?.paceKey === ph.key && repM && repM <= 1600 && settings.paceDisplay !== 'treadmill') {
+      split = ` <span class="split">≈${fmtTime(ph.sec * repM / 1000)} per ${repM >= 1000 ? (repM / 1000) + ' km' : repM + ' m'}</span>`;
+    }
+    return `${m} <span class="pace-pill">${val}</span>${split}`;
+  });
 }
 
 // ---- modal plumbing ----
@@ -141,65 +166,107 @@ export function closeModal() {
 
 // ---- log-workout modal (also used for ad-hoc runs) ----
 
-// workout may be null → ad-hoc log. onSaved() re-renders the calling view.
-export function openLogModal(workout, onSaved) {
+// Target pace (sec/km) of a workout's main set, or null.
+export function workTargetSec(w, profile, evidence = {}) {
+  const key = workPaceKey(w);
+  if (!key || !profile) return null;
+  if (key === 'goalpace') return goalPaceSec(profile, evidence.plan, evidence.extraLogs);
+  const p = pacesForDate(profile, w.date, evidence.plan, evidence.extraLogs);
+  return p[key] ?? null;
+}
+
+const splitPace = (secPerKm, units) => {
+  if (!(secPerKm > 0)) return ['', ''];
+  const spu = Math.round(units === 'mi' ? secPerKm * KM_PER_MI : secPerKm);
+  return [String(Math.floor(spu / 60)), String(spu % 60).padStart(2, '0')];
+};
+
+// workout: a plan workout, or null for an ad-hoc run. existing: an ad-hoc
+// log entry to edit. A workout that already has a log opens in edit mode.
+// onSaved(info) re-renders the caller; info = { workout, log, adhoc } lets
+// it show post-run feedback.
+export function openLogModal(workout, onSaved, existing = null) {
   const state = loadState();
   const units = state.settings.units;
   const isAdhoc = !workout;
-  const presetDist = workout?.distKm != null ? kmToUnit(workout.distKm, units).toFixed(1) : '';
+  const prev = isAdhoc ? existing : workout.log;
+  const editing = !!prev;
+  const evidence = { plan: state.plan, extraLogs: state.extraLogs };
+  const isEffort = workout && (workout.type === 'tt' || workout.type === 'race');
+  const workKey = workout ? workPaceKey(workout) : null;
+  const workTarget = workout ? workTargetSec(workout, state.profile, evidence) : null;
+
+  const presetKm = prev?.distKm ?? (workout?.type === 'tt' ? workout.work?.km : workout?.distKm);
+  const presetDist = presetKm != null ? String(Math.round(kmToUnit(presetKm, units) * 100) / 100) : '';
+  const t = prev?.durSec || 0;
+  const [pm, ps] = splitPace(prev?.workPaceSec, units);
+  const title = isAdhoc ? (editing ? 'Edit run' : 'Log a run') : `${editing ? 'Edit' : 'Log'}: ${esc(workout.title)}`;
+  const sub = isAdhoc ? 'An unplanned run. It still counts toward your totals.'
+    : isEffort ? 'Enter the time-trial / race itself, not the warm-up or cool-down.'
+      : 'How did it go?';
   const el = openModal(`
     <button class="modal-close" aria-label="Close">×</button>
-    <h2>${isAdhoc ? 'Log a run' : `Log: ${esc(workout.title)}`}</h2>
-    <p class="sub">${isAdhoc ? 'An unplanned run. It still counts toward your totals.' : 'How did it go?'}</p>
-    ${isAdhoc ? `<div class="field"><label>Date</label><input type="date" id="log-date" value="${todayStr()}" max="${todayStr()}"></div>` : ''}
-    <div class="field-row">
-      <div class="field"><label>Distance (${units})</label>
-        <input type="number" inputmode="decimal" step="0.1" min="0" id="log-dist" value="${presetDist}" placeholder="0.0"></div>
-    </div>
-    <div class="field"><label>Time</label>
+    <h2 id="modal-title">${title}</h2>
+    <p class="sub">${sub}</p>
+    ${isAdhoc ? `<div class="field"><label for="log-date">Date</label><input type="date" id="log-date" value="${esc(prev?.date || todayStr())}" max="${todayStr()}"></div>` : ''}
+    <div class="field"><label for="log-dist">${isEffort ? 'Race distance' : 'Distance'} (${units})</label>
+      <input type="number" inputmode="decimal" step="0.01" min="0" id="log-dist" value="${presetDist}" placeholder="0.0"></div>
+    <div class="field"><label>${isEffort ? 'Finish time' : 'Time'}</label>
       <div class="field-row">
-        <input type="number" inputmode="numeric" min="0" max="40" id="log-h" placeholder="h" style="flex:1">
-        <input type="number" inputmode="numeric" min="0" max="59" id="log-m" placeholder="min" style="flex:1">
-        <input type="number" inputmode="numeric" min="0" max="59" id="log-s" placeholder="sec" style="flex:1">
+        <input type="number" inputmode="numeric" min="0" max="40" id="log-h" placeholder="h" aria-label="Hours" value="${t ? Math.floor(t / 3600) || '' : ''}">
+        <input type="number" inputmode="numeric" min="0" max="59" id="log-m" placeholder="min" aria-label="Minutes" value="${t ? Math.floor((t % 3600) / 60) : ''}">
+        <input type="number" inputmode="numeric" min="0" max="59" id="log-s" placeholder="sec" aria-label="Seconds" value="${t ? t % 60 : ''}">
       </div>
     </div>
+    ${workKey ? `<div class="field"><label>Main-set pace (/${units}) · optional</label>
+      <div class="field-row">
+        <input type="number" inputmode="numeric" min="1" max="20" id="log-wm" placeholder="min" aria-label="Main-set pace minutes" value="${pm}">
+        <input type="number" inputmode="numeric" min="0" max="59" id="log-ws" placeholder="sec" aria-label="Main-set pace seconds" value="${ps}">
+      </div>
+      <p class="hint">Average pace of just the ${workKey === 'threshold' ? 'tempo / cruise reps' : workKey === 'goalpace' || workKey === 'marathon' ? 'goal-pace segments' : 'hard reps'} (from your watch laps)${workTarget ? `. Target ${fmtPace(workTarget, units)}` : ''}. This is what sharpens your paces; the whole-run average includes the warm-up and jogs.</p>
+    </div>` : ''}
+    ${isAdhoc ? `<label class="check-row"><input type="checkbox" id="log-race" ${prev?.race ? 'checked' : ''}> This was a race or all-out time trial <span class="hint">(updates your fitness)</span></label>` : ''}
     <div class="field"><label>Effort (RPE 1 = easy stroll · 10 = all out)</label>
-      <div class="rpe-row" id="log-rpe">
-        ${Array.from({ length: 10 }, (_, i) => `<button data-rpe="${i + 1}">${i + 1}</button>`).join('')}
+      <div class="rpe-row" id="log-rpe" role="radiogroup" aria-label="Effort">
+        ${Array.from({ length: 10 }, (_, i) => `<button type="button" data-rpe="${i + 1}" class="${prev?.rpe === i + 1 ? 'on' : ''}" aria-pressed="${prev?.rpe === i + 1}">${i + 1}</button>`).join('')}
       </div>
     </div>
-    <div class="field"><label>Notes (optional)</label>
-      <textarea id="log-notes" rows="2" placeholder="How it felt, route, weather…"></textarea></div>
+    <div class="field"><label for="log-notes">Notes (optional)</label>
+      <textarea id="log-notes" rows="2" placeholder="How it felt, route, weather…">${esc(prev?.notes || '')}</textarea></div>
     <div id="log-pace-preview" class="hint" style="margin-bottom:10px"></div>
     <div class="btn-row">
-      ${!isAdhoc ? '<button class="btn ghost" id="log-skip">Skip workout</button>' : ''}
-      <button class="btn primary" id="log-save">Save run</button>
+      ${!isAdhoc && !editing ? '<button class="btn ghost" id="log-skip">Skip workout</button>' : ''}
+      ${isAdhoc && editing ? '<button class="btn ghost danger" id="log-delete">Delete run</button>' : ''}
+      <button class="btn primary" id="log-save">${editing ? 'Save changes' : 'Save run'}</button>
     </div>
   `);
 
-  let rpe = null;
+  let rpe = prev?.rpe ?? null;
   el.querySelectorAll('#log-rpe button').forEach((b) =>
     b.addEventListener('click', () => {
       rpe = parseInt(b.dataset.rpe, 10);
-      el.querySelectorAll('#log-rpe button').forEach((x) => x.classList.toggle('on', x === b));
+      el.querySelectorAll('#log-rpe button').forEach((x) => {
+        x.classList.toggle('on', x === b);
+        x.setAttribute('aria-pressed', String(x === b));
+      });
     }));
 
+  const num = (id) => parseInt(el.querySelector(id)?.value || 0, 10) || 0;
+  const timeSec = () => num('#log-h') * 3600 + num('#log-m') * 60 + num('#log-s');
+  const workPace = () => {
+    if (!el.querySelector('#log-wm')) return null;
+    const spu = num('#log-wm') * 60 + num('#log-ws');
+    return spu >= 90 ? (units === 'mi' ? spu / KM_PER_MI : spu) : null;
+  };
   const paceLine = () => {
     const distU = parseFloat(el.querySelector('#log-dist').value);
     const sec = timeSec();
-    const prev = el.querySelector('#log-pace-preview');
-    if (distU > 0 && sec > 0) {
-      const distKm = unitToKm(distU, units);
-      prev.textContent = `Pace: ${fmtPaceDisplay(sec / distKm, state.settings)} · ${fmtTime(sec)}`;
-    } else prev.textContent = '';
-  };
-  const timeSec = () => {
-    const h = parseInt(el.querySelector('#log-h').value || 0, 10);
-    const m = parseInt(el.querySelector('#log-m').value || 0, 10);
-    const s = parseInt(el.querySelector('#log-s').value || 0, 10);
-    return h * 3600 + m * 60 + s;
+    const out = el.querySelector('#log-pace-preview');
+    out.textContent = distU > 0 && sec > 0
+      ? `Average: ${fmtPaceDisplay(sec / unitToKm(distU, units), state.settings)} · ${fmtTime(sec)}` : '';
   };
   el.addEventListener('input', paceLine);
+  paceLine();
 
   el.querySelector('#log-save').addEventListener('click', () => {
     const distU = parseFloat(el.querySelector('#log-dist').value);
@@ -209,25 +276,34 @@ export function openLogModal(workout, onSaved) {
       distKm: unitToKm(distU, units),
       durSec: sec > 0 ? sec : null,
       rpe, notes: el.querySelector('#log-notes').value.trim() || null,
-      loggedAt: new Date().toISOString(),
+      loggedAt: prev?.loggedAt || new Date().toISOString(),
     };
+    const wp = workPace();
+    if (wp) log.workPaceSec = wp;
     if (isAdhoc) {
       const date = el.querySelector('#log-date').value || todayStr();
-      state.extraLogs.push({ id: Math.random().toString(36).slice(2), date, ...log });
+      const race = el.querySelector('#log-race').checked;
+      if (editing) Object.assign(existing, { date, ...log, race });
+      else state.extraLogs.push({ id: Math.random().toString(36).slice(2), date, ...log, race });
     } else {
       workout.status = 'done';
       workout.log = log;
     }
     saveState();
     closeModal();
-    onSaved();
+    onSaved({ workout, log, adhoc: isAdhoc });
   });
 
-  const skip = el.querySelector('#log-skip');
-  if (skip) skip.addEventListener('click', () => {
+  el.querySelector('#log-skip')?.addEventListener('click', () => {
     workout.status = 'skipped';
     saveState();
     closeModal();
-    onSaved();
+    onSaved(null);
+  });
+  el.querySelector('#log-delete')?.addEventListener('click', () => {
+    state.extraLogs = state.extraLogs.filter((x) => x !== existing);
+    saveState();
+    closeModal();
+    onSaved(null);
   });
 }
