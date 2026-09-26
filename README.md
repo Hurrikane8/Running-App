@@ -9,21 +9,35 @@ Everything runs client-side; all data stays in your browser.
 
 ## Features
 
-- **Onboarding interview** — goal (5K → 100-mile ultra, or general fitness), race
-  date, experience, current volume, recent race/time trial, run days per week,
+- **Onboarding interview**: goal (5K to 100-mile ultra, or general fitness), race
+  date or goal time, experience, current volume, a recent race (optional; otherwise
+  a week-2 time trial calibrates you), which days you can run and your long-run day,
   injury flags, km/mi.
-- **Evidence-based plan generation** — VDOT pace zones, base/build/peak/taper
-  periodization, 80/20 intensity, ≤10% weekly progression, deload every 4th week,
-  ultra-specific back-to-back time-on-feet long runs.
-- **Today view** — session structure (warm-up / main set / cool-down) with your
-  personal pace targets and a coaching tip.
-- **Week view** — full week at a glance, drag or tap-to-move rescheduling,
-  missed-workout reshuffle that protects key sessions.
-- **Logging** — distance, time, RPE, notes; ad-hoc runs too.
-- **Progress** — weekly volume chart, pace trend, personal records.
-- **Mid-plan adaptation** — change goal/race date/fitness in Settings and the
-  future plan regenerates; history is kept.
-- **PWA** — installable, works offline, full-screen on iOS home screen.
+- **Training engine**: VDOT pace zones; base/build/peak/taper periodization; key
+  sessions spaced away from each other and from the long run; progressive
+  threshold, VO2max, speed, hill and race-specific goal-pace sessions sized by
+  Daniels' volume guidance; 3:1 deloads (never right before the taper); a taper
+  that keeps intensity; race-week sharpener and shakeout; time trials.
+- **Adaptive fitness**: races, time trials and main-set paces you log recalibrate
+  every pace target and the race-day projection.
+- **Today**: the session with its intensity profile, pace/HR targets and per-rep
+  splits, week-at-a-glance, coaching feedback after you log.
+- **Week**: planned vs actual, unplanned runs, missed sessions, drag or tap-to-move
+  rescheduling, a missed-workout reshuffle that protects key sessions.
+- **Plan**: race-day projection, periodization chart, tappable week-by-week list,
+  session guide.
+- **Progress**: fitness trend and race equivalents, logged vs planned volume,
+  consistency, 80/20 intensity split, best efforts, records.
+- **Mid-plan changes**: change goal, schedule or fitness and the rest of the plan
+  regenerates while keeping your progression and history.
+- **Calendar export (.ics)**, JSON backup/restore, optional heart-rate zones
+  (Karvonen).
+- **PWA**: installable, works offline, update prompt, full-screen on iOS.
+
+## Tests
+
+`npm test` (plan-engine property sweep and unit checks) and `npm run test:e2e`
+(browser flows; needs `npm run serve`). See [tests/README.md](tests/README.md).
 
 ## Run it
 

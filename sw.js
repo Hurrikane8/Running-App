@@ -1,5 +1,5 @@
 // Cache-first service worker for the app shell. Bump VERSION on deploys.
-const VERSION = 'stride-v16';
+const VERSION = 'stride-v20';
 const SHELL = [
   './',
   './index.html',
@@ -15,6 +15,7 @@ const SHELL = [
   './js/charts.js',
   './js/quotes.js',
   './js/wkfmt.js',
+  './js/ics.js',
   './js/views/onboarding.js',
   './js/views/plan.js',
   './js/views/today.js',
@@ -29,7 +30,11 @@ const SHELL = [
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())
+    // cache: 'reload' bypasses the browser HTTP cache so a new version never
+    // precaches stale files (GitHub Pages serves with max-age=600)
+    caches.open(VERSION)
+      .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
   );
 });
 
