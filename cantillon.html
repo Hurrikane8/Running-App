@@ -1,0 +1,1325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The Cantillon Effect</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600&family=Space+Grotesk:wght@700&display=block" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0E1A2B;
+    --teal: #1F6F78;
+    --teal-light: #3FA7A3;
+    --gold: #F4B942;
+    --gold-glow: #FFD66B;
+    --coral: #E8575A;
+    --cream: #F3EDE2;
+    --slate: #5B6B82;
+    --font-head: "Space Grotesk", "Helvetica Neue", Arial, system-ui, sans-serif;
+    --font-label: "Inter", "Helvetica Neue", Arial, system-ui, sans-serif;
+  }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--bg);
+    cursor: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  #stage {
+    position: fixed; inset: 0;
+    width: 100vw; height: 100vh; height: 100dvh;
+    display: block;
+  }
+  #stage * { cursor: none; }
+  .head { font-family: var(--font-head); font-weight: 700; }
+  .label { font-family: var(--font-label); font-weight: 600; }
+</style>
+</head>
+<body>
+<svg id="stage" viewBox="0 0 1080 1920" preserveAspectRatio="xMidYMid meet" aria-label="The Cantillon Effect">
+  <defs>
+    <clipPath id="frame"><rect width="1080" height="1920"/></clipPath>
+    <radialGradient id="gGlow">
+      <stop offset="0" stop-color="#FFD66B" stop-opacity="0.95"/>
+      <stop offset="0.35" stop-color="#F4B942" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#F4B942" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="gDrop" cx="0.38" cy="0.35" r="0.75">
+      <stop offset="0" stop-color="#FFF3C4"/>
+      <stop offset="0.35" stop-color="#FFD66B"/>
+      <stop offset="1" stop-color="#F4B942"/>
+    </radialGradient>
+    <radialGradient id="gVignette" cx="0.5" cy="0.5" r="0.75">
+      <stop offset="0.6" stop-color="#0E1A2B" stop-opacity="0"/>
+      <stop offset="1" stop-color="#070E18" stop-opacity="0.55"/>
+    </radialGradient>
+    <clipPath id="medClip"><ellipse cx="0" cy="0" rx="66" ry="80"/></clipPath>
+  </defs>
+  <g clip-path="url(#frame)">
+    <rect width="1080" height="1920" fill="#0E1A2B"/>
+    <g id="particles"></g>
+    <g id="cam">
+      <g id="lPond"></g>
+      <g id="lTitle"></g>
+      <g id="lFx"></g>
+      <g id="lTags"></g>
+      <g id="lPeople"></g>
+      <g id="lWallets"></g>
+      <g id="lTop"></g>
+    </g>
+    <rect width="1080" height="1920" fill="url(#gVignette)" pointer-events="none"/>
+    <g id="lText"></g>
+    <g id="lSafe"></g>
+  </g>
+</svg>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+(() => {
+'use strict';
+
+/* =====================================================================
+   0. CONFIG, PARAMS, PALETTE
+   ===================================================================== */
+const Q = new URLSearchParams(location.search);
+const P_T = Q.has('t') ? parseFloat(Q.get('t')) : null;
+const P_SPEED = parseFloat(Q.get('speed')) || 1;
+const P_VO = Q.get('vo') === '1';
+const P_SAFE = Q.get('safe') === '1';
+const P_SFX = Q.get('sfx') === '1';
+const P_PAUSE = Q.get('pause') === '1';
+
+const DUR = 78;                       // total runtime (s); final frame == frame 0
+const W = 1080, H = 1920;
+const C = {
+  bg: '#0E1A2B', teal: '#1F6F78', teal2: '#3FA7A3', gold: '#F4B942', glow: '#FFD66B',
+  coral: '#E8575A', cream: '#F3EDE2', slate: '#5B6B82', ink: '#0E1A2B', slate2: '#8796AB'
+};
+const FONT_HEAD = '"Space Grotesk", "Helvetica Neue", Arial, system-ui, sans-serif';
+const FONT_LABEL = '"Inter", "Helvetica Neue", Arial, system-ui, sans-serif';
+
+const NS = 'http://www.w3.org/2000/svg';
+const $ = id => document.getElementById(id);
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const TAU = Math.PI * 2;
+const f1 = n => (Math.round(n * 10) / 10);
+function hex2rgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+const rgbCache = {};
+function mix(a, b, t) {
+  const A = rgbCache[a] || (rgbCache[a] = hex2rgb(a));
+  const B = rgbCache[b] || (rgbCache[b] = hex2rgb(b));
+  t = clamp(t);
+  return `rgb(${Math.round(lerp(A[0], B[0], t))},${Math.round(lerp(A[1], B[1], t))},${Math.round(lerp(A[2], B[2], t))})`;
+}
+// deterministic pseudo-random
+function rnd(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+// periodic helper: integer cycles across the whole loop => identical at t=0 and t=DUR
+const per = (t, cycles, ph = 0) => Math.sin(TAU * cycles * t / DUR + ph);
+
+/* =====================================================================
+   1. WORLD GEOMETRY
+   ===================================================================== */
+const PC = { x: 540, y: 1040 };        // pond centre
+const SRC = { x: 540, y: 300 };        // money source / hero drop home
+const HOOK = [{ x: 310, y: 1150 }, { x: 770, y: 1150 }];
+const HOOK_S = 1.7, RIDE_S = 0.5, POND_S = 0.62, CHART_S = 0.36, PAN_S = 0.5;
+const WALLET_TOP = HOOK.map(h => ({ x: h.x, y: 786 }));
+const CH = { x0: 150, y0: 1330, w: 760, h: 620 };     // chart frame
+const PIVOT = { x: 540, y: 1000 };                     // balance-scale pivot
+const BEAM = 270;
+const N = 161;                                         // points per morphable shape
+const ARROW = { x0: 100, x1: 980, y: 560 };
+const CURL_L = ARROW.x1 - ARROW.x0, CURL_R0 = CURL_L / TAU;
+const ZONES = [140, 270];                              // inner zone rings (rim is outer)
+
+/* =====================================================================
+   2. GLOBAL STATE (tweened by the master timeline)
+   ===================================================================== */
+const S = {
+  camS: 1, camFx: 540, camFy: 960, camAx: 540, camAy: 960,
+  pondR: CURL_R0, tilt: 1, curl: 0, fill: 0,
+  rippleR: 0, raisedR: 0, waveLead: 26,
+  relax: 0, tipAmp: 0,
+  bob: 0, shim: 0,
+  splash: 0, flash: 0,
+  arrowHead: 0,
+  sil: 0, silY: 0, silRip: 0, yr1730: 0,
+  // morph keyframe positions
+  kRim: 0, kMid: 0, kIn: 0, kRip: 0, kWave: 0, kGap: 0, kDisk: 0,
+  // hero drop
+  drop: { x: SRC.x, y: SRC.y, s: 0.62, sx: 1, sy: 1, tip: 1, glow: 1 },
+};
+const coins = [0, 1].map(i => ({ x: HOOK[i].x, y: 0, s: 1, sx: 1, sy: 1, fall: 1 }));
+
+/* =====================================================================
+   3. SHAPE GENERATORS (all return N points)
+   ===================================================================== */
+const proj = (x, y) => [x, PC.y + (y - PC.y) * S.tilt];
+function circ(cx, cy, r, tilted) {
+  const P = new Array(N);
+  for (let i = 0; i < N; i++) {
+    const a = -Math.PI + TAU * i / (N - 1);            // start at bottom, clockwise
+    const x = cx + r * Math.sin(a), y = cy - r * Math.cos(a);
+    P[i] = tilted ? proj(x, y) : [x, y];
+  }
+  return P;
+}
+function linePts(ax, ay, bx, by) {
+  const P = new Array(N);
+  for (let i = 0; i < N; i++) { const u = i / (N - 1); P[i] = [lerp(ax, bx, u), lerp(ay, by, u)]; }
+  return P;
+}
+function point(x, y) { const P = new Array(N); for (let i = 0; i < N; i++) P[i] = [x, y]; return P; }
+function polyPts(V) {   // closed polygon, arc-length parametrised, starts at V[0]
+  const segs = []; let L = 0;
+  for (let i = 0; i < V.length; i++) {
+    const a = V[i], b = V[(i + 1) % V.length];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]); segs.push([a, b, l]); L += l;
+  }
+  const P = new Array(N);
+  for (let i = 0; i < N; i++) {
+    let d = L * i / (N - 1), j = 0;
+    while (j < segs.length - 1 && d > segs[j][2]) { d -= segs[j][2]; j++; }
+    const [a, b, l] = segs[j]; const u = l ? clamp(d / l) : 0;
+    P[i] = [lerp(a[0], b[0], u), lerp(a[1], b[1], u)];
+  }
+  return P;
+}
+function rectPts(x0, y0, x1, y1) { const cx = (x0 + x1) / 2; return polyPts([[cx, y1], [x0, y1], [x0, y0], [x1, y0], [x1, y1]]); }
+
+// hook lines
+function leftLine() { return linePts(WALLET_TOP[0].x, WALLET_TOP[0].y, SRC.x, SRC.y); }
+let _wind = null;
+function winding() {
+  if (_wind) return _wind;
+  const a = SRC, b = WALLET_TOP[1];
+  const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy);
+  const d = [dx / L, dy / L], n = [-d[1], d[0]];
+  // dense raw curve: serpentine + loops, then resample by arc length
+  const raw = [];
+  for (let i = 0; i <= 1200; i++) {
+    const u = i / 1200, env = Math.pow(Math.sin(Math.PI * u), 0.6);
+    const serp = 150 * Math.sin(3 * Math.PI * u) * env;
+    const th = TAU * 4 * u, r = 34 * env;
+    const along = L * u + r * Math.sin(th);
+    const side = serp + r * (1 - Math.cos(th)) * 0.9;
+    raw.push([a.x + d[0] * along + n[0] * side, a.y + d[1] * along + n[1] * side]);
+  }
+  const cum = [0];
+  for (let i = 1; i < raw.length; i++) cum.push(cum[i - 1] + Math.hypot(raw[i][0] - raw[i - 1][0], raw[i][1] - raw[i - 1][1]));
+  const tot = cum[cum.length - 1], P = new Array(N); let j = 0;
+  for (let i = 0; i < N; i++) {
+    const s = tot * i / (N - 1);
+    while (j < raw.length - 2 && cum[j + 1] < s) j++;
+    const u = clamp((s - cum[j]) / ((cum[j + 1] - cum[j]) || 1));
+    P[i] = [lerp(raw[j][0], raw[j + 1][0], u), lerp(raw[j][1], raw[j + 1][1], u)];
+  }
+  return (_wind = P);
+}
+// arrow that bends down and curls into a closed circle centred on the pond
+function curlPts() {
+  const k = S.curl, kap = k / CURL_R0;
+  const mx = 540, my = lerp(ARROW.y, PC.y - CURL_R0, gsap.parseEase('power2.inOut')(k));
+  const P = new Array(N);
+  for (let i = 0; i < N; i++) {
+    const s = -CURL_L / 2 + CURL_L * i / (N - 1);
+    if (kap < 1e-5) P[i] = [mx + s, my];
+    else { const th = kap * s; P[i] = [mx + Math.sin(th) / kap, my + (1 - Math.cos(th)) / kap]; }
+  }
+  return P;
+}
+// chart curves
+function goldF(u) {
+  const steep = (1 - Math.exp(-4.2 * u)) / (1 - Math.exp(-4.2));
+  return lerp(0.86 * steep, 0.47 * Math.pow(u, 0.9), S.relax);
+}
+function slateF(u) { return lerp(0.33 * smooth(0.4, 1, u), 0.43 * Math.pow(u, 1.05), S.relax); }
+const chartPt = (fn, u) => [CH.x0 + CH.w * u, CH.y0 - CH.h * fn(u)];
+function curvePts(fn) { const P = new Array(N); for (let i = 0; i < N; i++) P[i] = chartPt(fn, i / (N - 1)); return P; }
+function gapPts() {
+  const P = new Array(N), h = Math.ceil(N / 2);
+  for (let i = 0; i < h; i++) P[i] = chartPt(goldF, i / (h - 1));
+  for (let i = h; i < N; i++) P[i] = chartPt(slateF, 1 - (i - h + 1) / (N - h));
+  return P;
+}
+// balance scale
+function tipAngle() { return S.tipAmp * 0.13 * Math.sin(TAU * curT / 2.6) * (0.8 + 0.2 * Math.sin(TAU * curT / 5.3)); }
+function beamEnds() {
+  const th = tipAngle(), c = Math.cos(th) * BEAM, s = Math.sin(th) * BEAM;
+  return [[PIVOT.x - c, PIVOT.y - s], [PIVOT.x + c, PIVOT.y + s]];
+}
+function beamPts() { const [a, b] = beamEnds(); return linePts(a[0], a[1], b[0], b[1]); }
+function panPts(side) {
+  const E = beamEnds()[side], ex = E[0], ey = E[1];
+  const n1 = 20, n3 = 20, n2 = N - n1 - n3, P = [];
+  const L = [ex - 72, ey + 118], R = [ex + 72, ey + 118];
+  for (let i = 0; i < n1; i++) { const u = i / n1; P.push([lerp(ex, L[0], u), lerp(ey, L[1], u)]); }
+  for (let i = 0; i < n2; i++) { const t = Math.PI * i / (n2 - 1); P.push([ex - 72 * Math.cos(t), ey + 118 + 36 * Math.sin(t)]); }
+  for (let i = 1; i <= n3; i++) { const u = i / n3; P.push([lerp(R[0], ex, u), lerp(R[1], ey, u)]); }
+  return P;
+}
+const PAN_COIN = [[PIVOT.x - BEAM, PIVOT.y + 132], [PIVOT.x + BEAM, PIVOT.y + 132]];
+
+/* =====================================================================
+   4. MORPHING ELEMENTS (keyframed shapes + styles)
+   ===================================================================== */
+const lPond = $('lPond');
+const M = {};
+function morph(name, kKey, shapes, styles, fillMode, parent) {
+  const e = el('path', { fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, parent || lPond);
+  M[name] = { e, kKey, shapes, styles, fillMode, last: '' };
+}
+function lerpPts(A, B, t) {
+  if (t <= 0) return A; if (t >= 1) return B;
+  const P = new Array(N);
+  for (let i = 0; i < N; i++) P[i] = [A[i][0] + (B[i][0] - A[i][0]) * t, A[i][1] + (B[i][1] - A[i][1]) * t];
+  return P;
+}
+function toPath(P, close) {
+  let d = 'M' + f1(P[0][0]) + ',' + f1(P[0][1]);
+  for (let i = 1; i < P.length; i++) d += 'L' + f1(P[i][0]) + ',' + f1(P[i][1]);
+  return close ? d + 'Z' : d;
+}
+function renderMorph(m) {
+  const k = S[m.kKey], n = m.shapes.length;
+  const i = Math.min(Math.floor(k), n - 2), f = clamp(k - i);
+  const sa = m.styles[i], sb = m.styles[i + 1];
+  const w = lerp(sa.w, sb.w, f), o = lerp(sa.o, sb.o, f);
+  if (o < 0.004 || (!m.fillMode && w < 0.05)) { m.e.setAttribute('display', 'none'); return; }
+  m.e.removeAttribute('display');
+  const P = f <= 0 ? m.shapes[i]() : f >= 1 ? m.shapes[i + 1]() : lerpPts(m.shapes[i](), m.shapes[i + 1](), f);
+  m.e.setAttribute('d', toPath(P, m.fillMode));
+  const col = mix(sa.c, sb.c, f);
+  if (m.fillMode) {
+    m.e.setAttribute('fill', col); m.e.setAttribute('fill-opacity', o.toFixed(3));
+    if (w > 0.05) { m.e.setAttribute('stroke', mix(sa.sc || sa.c, sb.sc || sb.c, f)); m.e.setAttribute('stroke-width', w.toFixed(2)); }
+    else m.e.setAttribute('stroke', 'none');
+  } else {
+    m.e.setAttribute('stroke', col); m.e.setAttribute('stroke-width', w.toFixed(2)); m.e.setAttribute('stroke-opacity', o.toFixed(3));
+  }
+}
+const st = (c, w, o = 1, sc) => ({ c, w, o, sc });
+const HID = st(C.gold, 0, 0);
+
+// The pond water body -> chart baseline -> scale base -> gone
+morph('disk', 'kDisk', [
+  () => point(540, PC.y),
+  () => circ(540, PC.y, CURL_R0 * S.fill, false),
+  () => circ(PC.x, PC.y, S.pondR, true),
+  () => rectPts(CH.x0, CH.y0, CH.x0 + CH.w, CH.y0 + 16),
+  () => rectPts(430, 1322, 650, 1340),
+  () => point(540, 1330),
+], [st(C.teal, 0, 1), st(C.teal, 0, 1), st(C.teal, 0, 1), st(C.teal, 0, 1), st(C.slate, 0, 1), st(C.slate, 0, 0)], true);
+
+// Raised water behind the money ripple -> coral gap -> fulcrum -> gone
+morph('gap', 'kGap', [
+  () => circ(PC.x, PC.y, 0.01, true),
+  () => circ(PC.x, PC.y, S.raisedR, true),
+  () => gapPts(),
+  () => polyPts([[540, 1072], [492, 1072], [540, 1000], [588, 1072]]),
+  () => point(540, 1000),
+], [st(C.teal2, 0, 0.0), st(C.teal2, 0, 0.42), st(C.coral, 0, 0.62), st(C.slate2, 0, 1), st(C.slate2, 0, 0)], true);
+
+// shimmer group lives between water and rings
+const lShim = el('g', {}, lPond);
+
+// Middle zone ring: hook short line -> retract -> silhouette ripple -> zone ring -> y-axis -> pillar -> hook short line
+morph('mid', 'kMid', [
+  () => leftLine(),
+  () => point(SRC.x, SRC.y),
+  () => point(SIL.x, SIL.y),
+  () => circ(SIL.x, SIL.y, 105, false),
+  () => circ(PC.x, PC.y, ZONES[1], true),
+  () => linePts(CH.x0, CH.y0, CH.x0, CH.y0 - CH.h),
+  () => linePts(540, 1330, PIVOT.x, PIVOT.y),
+  () => leftLine(),
+], [st(C.gold, 5), st(C.gold, 0, 0), st(C.teal2, 0, 0), st(C.teal2, 5, 0.9), st(C.teal2, 3, 0.45), st(C.slate2, 5, 1), st(C.cream, 12, 1), st(C.gold, 5)]);
+
+// Inner zone ring -> gold "assets" line -> left pan -> coin -> gone
+morph('in', 'kIn', [
+  () => point(SIL.x, SIL.y),
+  () => circ(SIL.x, SIL.y, 60, false),
+  () => circ(PC.x, PC.y, ZONES[0], true),
+  () => curvePts(goldF),
+  () => panPts(0),
+  () => circ(PAN_COIN[0][0], PAN_COIN[0][1], 30, false),
+  () => circ(PAN_COIN[0][0], PAN_COIN[0][1], 30, false),
+], [st(C.teal2, 0, 0), st(C.teal2, 4, 0.9), st(C.teal2, 3, 0.45), st(C.gold, 9), st(C.gold, 6), st(C.gold, 6), st(C.gold, 0, 0)]);
+
+// Coral price wave ring -> collapses into the top edge of the gap
+morph('wave', 'kWave', [
+  () => circ(PC.x, PC.y, 0.01, true),
+  () => circ(PC.x, PC.y, S.rippleR + S.waveLead, true),
+  () => curvePts(goldF),
+], [st(C.coral, 0, 0), st(C.coral, 5, 0.95), st(C.coral, 0, 0)]);
+
+// Gold money ripple -> slate "wages" line -> right pan -> coin -> gone
+morph('rip', 'kRip', [
+  () => circ(PC.x, PC.y, 0.01, true),
+  () => circ(PC.x, PC.y, S.rippleR, true),
+  () => curvePts(slateF),
+  () => panPts(1),
+  () => circ(PAN_COIN[1][0], PAN_COIN[1][1], 30, false),
+  () => circ(PAN_COIN[1][0], PAN_COIN[1][1], 30, false),
+], [st(C.gold, 0, 0), st(C.gold, 8, 1), st(C.slate2, 9), st(C.gold, 6), st(C.gold, 6), st(C.gold, 0, 0)]);
+
+// THE thread: winding hook line -> timeline arrow -> curl -> pond rim -> x-axis -> scale beam -> winding hook line
+morph('rim', 'kRim', [
+  () => winding(),
+  () => curlPts(),
+  () => circ(PC.x, PC.y, S.pondR, true),
+  () => linePts(CH.x0, CH.y0, CH.x0 + CH.w, CH.y0),
+  () => beamPts(),
+  () => winding(),
+], [st(C.gold, 5), st(C.gold, 7), st(C.teal2, 6), st(C.slate2, 6), st(C.cream, 14), st(C.gold, 5)]);
+const arrowHead = el('path', { fill: C.gold, d: 'M0,-20 L34,0 L0,20 Z' }, lPond);
+
+// silhouette position on the pond rim (scene 2)
+const SIL = { x: 540 - 330 * Math.sin(0.44), y: PC.y - 330 * Math.cos(0.44) };
+
+/* =====================================================================
+   5. AMBIENT: particles + water shimmer
+   ===================================================================== */
+const parts = [];
+for (let i = 0; i < 26; i++) {
+  const c = el('circle', { r: (1.5 + rnd(i) * 3.5).toFixed(1), fill: i % 5 === 0 ? C.gold : C.cream }, $('particles'));
+  parts.push({ c, x0: rnd(i + 3) * W, y0: rnd(i + 7) * H, cyc: 1 + Math.floor(rnd(i + 11) * 3), sw: 10 + rnd(i + 13) * 30, swc: 3 + Math.floor(rnd(i + 17) * 6), ph: rnd(i + 19) * TAU, o: 0.08 + rnd(i + 23) * 0.22 });
+}
+const shims = [];
+for (let i = 0; i < 9; i++) {
+  const p = el('path', { fill: 'none', stroke: C.teal2, 'stroke-width': 3, 'stroke-linecap': 'round' }, lShim);
+  shims.push({ p, r: 0.18 + 0.75 * rnd(i + 40), a0: rnd(i + 41) * TAU, len: 0.25 + rnd(i + 42) * 0.35, cyc: (i % 3) + 1, dir: i % 2 ? 1 : -1, ph: rnd(i + 43) * TAU });
+}
+
+/* =====================================================================
+   6. SCENE-2 PROPS: title letters, silhouette medallion, paper notes
+   ===================================================================== */
+const lTitle = $('lTitle');
+const titleRows = [];   // built after fonts load
+const medal = el('g', {}, lTitle);
+const silRing = el('ellipse', { fill: 'none', stroke: C.teal2, 'stroke-width': 4 }, medal);
+const medalInner = el('g', {}, medal);
+el('ellipse', { cx: 0, cy: 0, rx: 70, ry: 84, fill: C.slate, stroke: C.gold, 'stroke-width': 5 }, medalInner);
+const silG = el('g', { 'clip-path': 'url(#medClip)' }, medalInner);
+el('path', { fill: C.cream, d:
+  // coat & shoulders
+  'M-70,90 C-66,40 -44,22 -14,18 L18,18 C46,22 64,40 70,90 Z' +
+  // neck
+  'M-12,4 L10,4 L12,22 L-12,22 Z' +
+  // head (profile facing right) with nose
+  'M-20,-30 C-20,-48 -6,-56 8,-54 C20,-52 26,-42 26,-32 L34,-20 L26,-16 C27,-10 26,-4 22,0 C16,6 8,10 -2,10 C-16,10 -22,-6 -20,-30 Z' +
+  // queue (ponytail) with ribbon
+  'M-18,-18 C-30,-12 -34,0 -30,12 L-24,12 C-26,2 -22,-8 -14,-12 Z' +
+  // tricorn hat
+  'M-44,-40 C-24,-62 26,-62 46,-40 C28,-47 -26,-49 -44,-40 Z' +
+  'M-26,-45 C-22,-72 22,-72 26,-45 Z'
+}, silG);
+// cravat highlight
+el('path', { fill: C.slate, d: 'M-4,18 L6,18 L4,40 L-2,40 Z' }, silG);
+
+const notes = [];
+const lNotes = el('g', {}, lTitle);
+const NOTE_LAND = [[380, 930], [640, 1000], [470, 1230], [720, 1200], [300, 1090]];
+for (let i = 0; i < 5; i++) {
+  const g = el('g', {}, lNotes);
+  const ring = el('ellipse', { fill: 'none', stroke: C.teal2, 'stroke-width': 3 }, lNotes);
+  el('rect', { x: -46, y: -26, width: 92, height: 52, rx: 4, fill: '#E9E1CF', stroke: C.slate, 'stroke-width': 2 }, g);
+  el('rect', { x: -38, y: -18, width: 76, height: 36, rx: 2, fill: 'none', stroke: C.slate, 'stroke-width': 1.5 }, g);
+  el('circle', { cx: 0, cy: 0, r: 10, fill: 'none', stroke: C.gold, 'stroke-width': 3 }, g);
+  el('text', { x: -30, y: 4, 'font-size': 12, 'font-family': FONT_LABEL, 'font-weight': 600, fill: C.slate }, g).textContent = '£';
+  notes.push({ g, ring, p: 0, d: 0, x0: -120 - i * 30, y0: 420 + i * 70, lx: NOTE_LAND[i][0], ly: NOTE_LAND[i][1], ph: rnd(i + 60) * TAU });
+}
+
+/* =====================================================================
+   7. FX: splash droplets + impact flash
+   ===================================================================== */
+const lFx = $('lFx');
+const flashRing = el('ellipse', { fill: 'none', stroke: C.glow, 'stroke-width': 10 }, lFx);
+const drops = [];
+for (let i = 0; i < 14; i++) {
+  const c = el('ellipse', { fill: i % 3 ? C.gold : C.glow }, lFx);
+  drops.push({ c, a: TAU * i / 14 + rnd(i + 80) * 0.35, v: 90 + rnd(i + 81) * 120, up: 80 + rnd(i + 82) * 140, r: 5 + rnd(i + 83) * 7 });
+}
+
+/* =====================================================================
+   8. PRICE TAGS
+   ===================================================================== */
+const ICONS = {
+  bread: 'M-15,6 L-15,-2 C-15,-12 -8,-15 0,-15 C8,-15 15,-12 15,-2 L15,6 Q15,9 12,9 L-12,9 Q-15,9 -15,6 Z M-7,-10 L-4,-4 M0,-11 L3,-5 M7,-10 L10,-4',
+  house: 'M-15,-2 L0,-15 L15,-2 M-11,-5 L-11,11 L11,11 L11,-5 M-3,11 L-3,3 L3,3 L3,11',
+  gas: 'M-11,11 L-11,-12 Q-11,-15 -8,-15 L4,-15 Q7,-15 7,-12 L7,11 Z M-7,-10 L3,-10 L3,-3 L-7,-3 Z M7,-6 L12,-2 L12,7 Q12,10 15,9 M-14,11 L10,11',
+  chart: 'M-15,-15 L-15,12 L15,12 M-10,6 L-3,-2 L3,3 L13,-11 M7,-11 L13,-11 L13,-5',
+  cart: 'M-16,-12 L-11,-12 L-7,5 L11,5 L14,-7 L-9,-7 M-5,11 A2,2 0 1 0 -5,10.9 M9,11 A2,2 0 1 0 9,10.9',
+  bldg: 'M-12,13 L-12,-15 L12,-15 L12,13 M-16,13 L16,13 M-6,-9 L-3,-9 M3,-9 L6,-9 M-6,-2 L-3,-2 M3,-2 L6,-2 M-6,5 L-3,5 M3,5 L6,5',
+};
+function fmtPrice(v, kind) {
+  if (kind === 'k') return '$' + Math.round(v / 5) * 5 + 'K';
+  if (kind === 'm') return '$' + (Math.round(v * 10) / 10).toFixed(1) + 'M';
+  if (kind === 'c') return '$' + (Math.round(v / 10) * 10).toLocaleString('en-US');
+  if (kind === 'i') return '$' + Math.round(v);
+  const r = Math.round(v * 10) / 10;
+  return '$' + (Math.abs(r - Math.round(r)) < 0.01 && v < 5 && r === Math.round(r) && kind === 'd0' ? Math.round(r) : r.toFixed(2));
+}
+const lTags = $('lTags');
+const tags = [];
+function makeTag(icon, v, kind, x, y, pond) {
+  const g = el('g', { display: 'none' }, lTags);
+  const bg = el('rect', { x: -78, y: -32, width: 156, height: 64, rx: 14, fill: C.cream, stroke: C.ink, 'stroke-opacity': 0.15, 'stroke-width': 2 }, g);
+  const hole = el('circle', { cx: -62, cy: 0, r: 5, fill: C.bg }, g);
+  const ic = el('path', { d: ICONS[icon], fill: 'none', stroke: C.ink, 'stroke-width': 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', transform: 'translate(-32,0)' }, g);
+  const tx = el('text', { x: 26, y: 11, 'text-anchor': 'middle', 'font-size': 30, 'font-family': FONT_LABEL, 'font-weight': 600, fill: C.ink }, g);
+  const t = { g, bg, ic, tx, v, kind, x, y, s: 0, c: 0, own: 0, pond, rot: 0, last: '' };
+  tags.push(t); return t;
+}
+// hook tags (3 per person)
+const HT = [
+  makeTag('bread', 3, 'd0', 140, 880, false), makeTag('house', 400, 'k', 150, 1090, false), makeTag('gas', 1.5, 'd', 440, 760, false),
+  makeTag('bread', 3, 'd0', 650, 640, false), makeTag('house', 400, 'k', 600, 1100, false), makeTag('gas', 1.5, 'd', 590, 935, false),
+];
+// pond tags
+const PT = {
+  house: makeTag('house', 400, 'k', 440, 975, true),
+  stock: makeTag('chart', 100, 'i', 652, 985, true),
+  bldg: makeTag('bldg', 2.0, 'm', 540, 1165, true),
+  gas: makeTag('gas', 1.5, 'd', 330, 1170, true),
+  bread: makeTag('bread', 3, 'd0', 760, 885, true),
+  cart: makeTag('cart', 50, 'i', 420, 820, true),
+  bread2: makeTag('bread', 3, 'd0', 560, 1395, true),
+  rent: makeTag('house', 1200, 'c', 400, 1350, true),
+  cart2: makeTag('cart', 50, 'i', 200, 990, true),
+};
+
+/* =====================================================================
+   9. PILL PEOPLE (+ wallets)
+   ===================================================================== */
+const lPeople = $('lPeople'), lWallets = $('lWallets');
+const people = [];
+function ringPos(r, deg) { const a = deg * Math.PI / 180; return { x: PC.x + r * Math.sin(a), y: PC.y - r * Math.cos(a) }; }
+const POND_POS = [
+  ringPos(70, 240),   // 0: left hook person -> BANKS (centre)
+  ringPos(340, 150),  // 1: right hook person -> featured edge person
+  ringPos(70, 0),     // 2 centre: ASSET HOLDERS
+  ringPos(70, 120),   // 3 centre: GOVERNMENT CONTRACTORS
+  ringPos(205, 40), ringPos(205, 112), ringPos(205, 184), ringPos(205, 256), ringPos(205, 322), // 4-8 middle
+  ringPos(340, 0), ringPos(340, 45), ringPos(340, 95), ringPos(340, 205), ringPos(340, 250), ringPos(340, 295), ringPos(340, 330), // 9-15 outer
+];
+const ZONE_OF = i => (i === 0 || i === 2 || i === 3) ? 0 : (i >= 4 && i <= 8) ? 1 : 2;
+// chart slots
+const GOLD_U = { 0: 0.2, 2: 0.36, 3: 0.52 };
+function chartSlot(i) {
+  if (GOLD_U[i] !== undefined) return { fn: goldF, u: GOLD_U[i] };
+  const order = [1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+  const j = order.indexOf(i);
+  return { fn: slateF, u: 0.05 + 0.9 * j / (order.length - 1) };
+}
+
+function makePerson(i) {
+  const g = el('g', { display: 'none' }, lPeople);
+  const shadow = el('ellipse', { cx: 0, cy: 2, rx: 30, ry: 8, fill: '#050b14', 'fill-opacity': 0.35 }, g);
+  const body = el('rect', { x: -22, y: -104, width: 44, height: 104, rx: 22, fill: C.cream, stroke: C.gold, 'stroke-width': 0 }, g);
+  const headG = el('g', {}, g);
+  const head = el('circle', { cx: 0, cy: -128, r: 21, fill: C.cream, stroke: C.gold, 'stroke-width': 0 }, headG);
+  const eyes = el('g', {}, headG);
+  el('circle', { cx: -7, cy: 0, r: 3, fill: C.ink }, eyes);
+  el('circle', { cx: 7, cy: 0, r: 3, fill: C.ink }, eyes);
+  const armsO = el('path', { fill: 'none', stroke: C.ink, 'stroke-width': 14, 'stroke-linecap': 'round', 'stroke-opacity': 0.55 }, g);
+  const arms = el('path', { fill: 'none', stroke: C.cream, 'stroke-width': 9, 'stroke-linecap': 'round' }, g);
+  const coin = el('circle', { r: 11, fill: C.gold, stroke: C.glow, 'stroke-width': 3 }, g);
+  const water = el('path', { fill: C.teal2, 'fill-opacity': 0.88 }, g);
+  const wline = el('path', { fill: 'none', stroke: '#BFE6E1', 'stroke-width': 4, 'stroke-linecap': 'round' }, g);
+  // wallet (world-space, separate layer so its size is independent of the body)
+  const wg = el('g', { display: 'none' }, lWallets);
+  const wbg = el('rect', { x: -76, y: -28, width: 152, height: 56, rx: 12, fill: C.cream, stroke: C.gold, 'stroke-width': 0 }, wg);
+  el('rect', { x: 56, y: -10, width: 20, height: 20, rx: 5, fill: C.ink, 'fill-opacity': 0.12 }, wg);
+  const warr = el('path', { d: 'M0,-9 L9,6 L-9,6 Z', fill: C.gold }, wg);
+  const wtx = el('text', { x: -6, y: 12, 'text-anchor': 'middle', 'font-size': 34, 'font-family': FONT_LABEL, 'font-weight': 600, fill: C.ink }, wg);
+  const hook = i < 2 ? HOOK[i] : POND_POS[i];
+  const p = {
+    i, g, shadow, body, headG, head, eyes, arms, armsO, coin, water, wline, wg, wbg, warr, wtx,
+    hook, pond: POND_POS[i],
+    ride: 0, pondT: i < 2 ? 0 : 1, chart: 0, pan: 0, back: 0,
+    pop: i < 2 ? 1 : 0, sq: 1, gold: 0, hold: i < 2 ? 1 : 0, up: 0, wl: 0, tiltH: 0, coinS: 0,
+    w: { s: i < 2 ? 1 : 0, v: 100, mode: 0, ws: 1.5 },
+    lastW: '', X: 0, Y: 0, Sc: 1,
+    blinks: [], bobPh: rnd(i + 200) * TAU, bobC: 20 + (i % 5) * 3,
+    rideIdx: i === 0 ? Math.round(0.2 * (N - 1)) : Math.round(0.8 * (N - 1)),
+  };
+  for (let b = 0; b < 14; b++) { const tb = 3 + rnd(i * 31 + b) * 72; p.blinks.push(tb); }
+  people.push(p); return p;
+}
+for (let i = 0; i < 16; i++) makePerson(i);
+// draw order: sort by pond depth so nearer (lower) people overlap farther ones
+people.slice().sort((a, b) => a.pond.y - b.pond.y).forEach(p => { lPeople.appendChild(p.g); });
+
+/* =====================================================================
+   10. COINS + HERO DROP
+   ===================================================================== */
+const lTop = $('lTop');
+const coinEls = coins.map(() => {
+  const g = el('g', {}, lTop);
+  el('circle', { r: 30, fill: C.gold, stroke: C.glow, 'stroke-width': 5 }, g);
+  el('circle', { r: 19, fill: 'none', stroke: '#D99A1E', 'stroke-width': 3 }, g);
+  el('path', { d: 'M-9,-14 Q-16,-4 -10,8', fill: 'none', stroke: '#FFF3C4', 'stroke-width': 4, 'stroke-linecap': 'round' }, g);
+  return g;
+});
+const dropG = el('g', {}, lTop);
+const dropGlow = el('circle', { r: 110, fill: 'url(#gGlow)' }, dropG);
+const dropBody = el('path', { fill: 'url(#gDrop)', stroke: C.glow, 'stroke-width': 0.06 }, dropG);
+const dropHi = el('path', { fill: 'none', stroke: '#FFF7D6', 'stroke-width': 0.12, 'stroke-linecap': 'round' }, dropG);
+function dropPath(tip) {
+  const ty = -1 - 0.75 * tip, cx = lerp(0.55, 0.3, tip), cy = lerp(-1, -1.05, tip);
+  return `M0,${ty.toFixed(3)} C${cx.toFixed(3)},${cy.toFixed(3)} 1,-0.55 1,0 A1,1 0 0 1 -1,0 C-1,-0.55 ${(-cx).toFixed(3)},${cy.toFixed(3)} 0,${ty.toFixed(3)} Z`;
+}
+
+/* =====================================================================
+   11. KINETIC TEXT + LABEL PILLS (screen space)
+   ===================================================================== */
+const lText = $('lText');
+const words = [];     // every kinetic word
+const pills = [];
+function measure(str, size, family, weight) {
+  const t = el('text', { 'font-size': size, 'font-family': family, 'font-weight': weight, x: -9999, y: -9999 }, lText);
+  t.textContent = str; const w = t.getComputedTextLength(); t.remove(); return w;
+}
+/* lines: [{text, size, color, gap}] ; returns array of word states */
+function makeText(lines, y0, opts = {}) {
+  const maxW = opts.maxW || 800, cx = opts.x || 540, fam = FONT_HEAD;
+  const out = []; let y = y0;
+  lines.forEach((ln, li) => {
+    let size = ln.size || 110;
+    const toks = ln.text.split(' ');
+    const space = () => size * 0.28;
+    let widths = toks.map(t => measure(t, size, fam, 700));
+    let total = widths.reduce((a, b) => a + b, 0) + space() * (toks.length - 1);
+    if (total > maxW) { const k = maxW / total; size *= k; widths = widths.map(w => w * k); total = maxW; }
+    if (li > 0) y += size * 0.5 + (ln.gap || 16);
+    let x = cx - total / 2;
+    toks.forEach((tok, ti) => {
+      const g = el('g', { display: 'none' }, lText);
+      const t = el('text', { 'text-anchor': 'middle', y: size * 0.36, 'font-size': size.toFixed(1), 'font-family': fam, 'font-weight': 700, fill: ln.color || C.cream, 'letter-spacing': '-0.5', stroke: C.bg, 'stroke-width': (size * 0.1).toFixed(1), 'stroke-linejoin': 'round', 'paint-order': 'stroke' }, g);
+      t.textContent = tok;
+      const wd = { g, x: x + widths[ti] / 2, y, s: 0, r: -6, dy: 0, sy: 1 };
+      words.push(wd); out.push(wd);
+      x += widths[ti] + space();
+    });
+    y += size * 0.5;
+  });
+  return out;
+}
+function makePill(text, x, y, target, color) {
+  const size = 46;
+  const w = measure(text, size, FONT_LABEL, 600) + 56;
+  const g = el('g', { display: 'none' }, lText);
+  const lead = el('path', { fill: 'none', stroke: color || C.gold, 'stroke-width': 3, 'stroke-dasharray': '2 9', 'stroke-linecap': 'round' }, lText);
+  const dot = el('circle', { r: 7, fill: color || C.gold }, lText);
+  el('rect', { x: 0, y: -38, width: w, height: 76, rx: 38, fill: C.bg, 'fill-opacity': 0.82, stroke: color || C.gold, 'stroke-width': 4 }, g);
+  const t = el('text', { x: w / 2, y: 16, 'text-anchor': 'middle', 'font-size': size, 'font-family': FONT_LABEL, 'font-weight': 600, fill: C.cream }, g);
+  t.textContent = text;
+  const pl = { g, lead, dot, x, y, w, s: 0, lead_t: 0, target };
+  pills.push(pl); return pl;
+}
+function makeChartLabel(text, x, y, color) {
+  const g = el('g', { display: 'none' }, lText);
+  const t = el('text', { 'text-anchor': 'middle', y: 18, 'font-size': 50, 'font-family': FONT_LABEL, 'font-weight': 600, fill: color, stroke: C.bg, 'stroke-width': 8, 'stroke-linejoin': 'round', 'paint-order': 'stroke' }, g);
+  t.textContent = text;
+  const wd = { g, x, y, s: 0, r: 0, dy: 0, sy: 1 };
+  words.push(wd); return wd;
+}
+
+/* =====================================================================
+   12. SAFE-ZONE OVERLAY (debug)
+   ===================================================================== */
+if (P_SAFE) {
+  const L = $('lSafe');
+  const z = { fill: '#ff2d55', 'fill-opacity': 0.22, stroke: '#ff2d55', 'stroke-width': 3 };
+  el('rect', Object.assign({ x: 0, y: 0, width: W, height: 220 }, z), L);
+  el('rect', Object.assign({ x: 0, y: H - 420, width: W, height: 420 }, z), L);
+  el('rect', Object.assign({ x: W - 140, y: 220, width: 140, height: H - 640 }, z), L);
+  const tt = el('text', { x: 20, y: 60, fill: '#fff', 'font-size': 34, 'font-family': 'monospace' }, L);
+  S._dbg = tt;
+}
+
+/* =====================================================================
+   13. RENDER (called every tick; pure function of state + time)
+   ===================================================================== */
+let curT = 0;
+const cam = $('cam');
+function toScreen(x, y) { return [S.camAx + S.camS * (x - S.camFx), S.camAy + S.camS * (y - S.camFy)]; }
+function setT(g, x, y, s, r, sx, sy) {
+  let tr = `translate(${f1(x)},${f1(y)})`;
+  if (r) tr += ` rotate(${r.toFixed(2)})`;
+  const X = (sx === undefined ? 1 : sx) * s, Y = (sy === undefined ? 1 : sy) * s;
+  if (X !== 1 || Y !== 1) tr += ` scale(${X.toFixed(4)},${Y.toFixed(4)})`;
+  g.setAttribute('transform', tr);
+}
+function show(g, on) { if (on) g.removeAttribute('display'); else g.setAttribute('display', 'none'); }
+
+let rimCache = null;
+function personPlace(p) {
+  let x = p.hook.x, y = p.hook.y, s = p.i < 2 ? HOOK_S : POND_S;
+  if (p.ride > 0 && rimCache) {
+    const q = rimCache[p.rideIdx];
+    x = lerp(x, q[0], p.ride); y = lerp(y, q[1], p.ride); s = lerp(s, RIDE_S, p.ride);
+  }
+  if (p.pondT > 0) {
+    const q = proj(p.pond.x, p.pond.y);
+    const bob = S.bob * 5 * per(curT, p.bobC, p.bobPh);
+    x = lerp(x, q[0], p.pondT); y = lerp(y, q[1] + bob, p.pondT); s = lerp(s, POND_S, p.pondT);
+  }
+  if (p.chart > 0) {
+    const sl = chartSlot(p.i), q = chartPt(sl.fn, sl.u);
+    x = lerp(x, q[0], p.chart); y = lerp(y, q[1] - 3, p.chart); s = lerp(s, CHART_S, p.chart);
+  }
+  if (p.pan > 0) {
+    const E = beamEnds()[p.i === 0 ? 0 : 1];
+    x = lerp(x, E[0], p.pan); y = lerp(y, E[1] + 146, p.pan); s = lerp(s, PAN_S, p.pan);
+  }
+  if (p.back > 0) { x = lerp(x, HOOK[p.i].x, p.back); y = lerp(y, HOOK[p.i].y, p.back); s = lerp(s, HOOK_S, p.back); }
+  p.X = x; p.Y = y; p.Sc = s * p.pop;
+}
+function handPos(p, side) {
+  const sg = side ? 1 : -1;
+  let hx = 29 * sg, hy = -40;
+  hx = lerp(hx, 8 * sg, p.hold); hy = lerp(hy, -58, p.hold);
+  hx = lerp(hx, 36 * sg, p.up); hy = lerp(hy, -184, p.up);
+  return [hx, hy];
+}
+function renderPerson(p) {
+  personPlace(p);
+  const vis = p.Sc > 0.004;
+  show(p.g, vis);
+  if (vis) {
+    setT(p.g, p.X, p.Y, p.Sc, 0, 1 / Math.sqrt(p.sq), p.sq);
+    // arms
+    const L = handPos(p, 0), R = handPos(p, 1);
+    const d = `M-15,-84 Q${f1((-15 + L[0]) / 2 - 6)},${f1((-84 + L[1]) / 2)} ${f1(L[0])},${f1(L[1])} M15,-84 Q${f1((15 + R[0]) / 2 + 6)},${f1((-84 + R[1]) / 2)} ${f1(R[0])},${f1(R[1])}`;
+    p.arms.setAttribute('d', d); p.armsO.setAttribute('d', d);
+    // gold edge
+    const gw = p.gold * 7;
+    p.body.setAttribute('stroke-width', gw.toFixed(2)); p.head.setAttribute('stroke-width', gw.toFixed(2));
+    // eyes + blink + head tilt
+    let blink = 1;
+    for (const b of p.blinks) { const dt = curT - b; if (dt > 0 && dt < 0.14) { blink = 0.12; break; } }
+    p.eyes.setAttribute('transform', `translate(0,${f1(-130 - 4 * p.tiltH)}) scale(1,${blink})`);
+    p.headG.setAttribute('transform', p.tiltH ? `rotate(${(-16 * p.tiltH).toFixed(2)},0,-108)` : '');
+    // small coin in hand
+    show(p.coin, p.coinS > 0.01);
+    if (p.coinS > 0.01) { const hp = R; p.coin.setAttribute('transform', `translate(${f1(hp[0] + 4)},${f1(hp[1] - 10)}) scale(${p.coinS.toFixed(3)})`); }
+    // water level
+    const on = p.wl > 0.5;
+    show(p.water, on); show(p.wline, on);
+    if (on) {
+      let top = '', ln = '';
+      for (let k = 0; k <= 12; k++) {
+        const xx = -48 + 8 * k, yy = -p.wl + 3.5 * Math.sin(xx * 0.14 + curT * 5 + p.i);
+        top += (k ? 'L' : 'M') + f1(xx) + ',' + f1(yy);
+      }
+      ln = top;
+      p.water.setAttribute('d', top + 'L48,8 L-48,8 Z');
+      p.wline.setAttribute('d', ln);
+    }
+  }
+  // wallet
+  const w = p.w, wvis = w.s > 0.004 && vis;
+  show(p.wg, wvis);
+  if (wvis) {
+    const topY = p.Y - 150 * p.Sc * p.sq;
+    const ws = w.ws * w.s;
+    setT(p.wg, p.X, topY - 34 * w.ws, ws);
+    const txt = '$' + Math.round(w.v);
+    if (txt !== p.lastW) {
+      if (p.lastW && P_SFX && w.s > 0.5) sfx.tick();
+      p.wtx.textContent = txt; p.lastW = txt;
+    }
+    const m = w.mode;
+    p.wbg.setAttribute('stroke-width', (Math.abs(m) * 5).toFixed(2));
+    p.wbg.setAttribute('stroke', m < 0 ? C.coral : C.gold);
+    p.wtx.setAttribute('fill', mix(C.ink, C.coral, Math.max(0, -m)));
+    p.wtx.setAttribute('x', f1(-6 + 12 * Math.abs(m)));
+    show(p.warr, Math.abs(m) > 0.02);
+    p.warr.setAttribute('transform', `translate(-52,-1) scale(${Math.abs(m).toFixed(3)},${(m >= 0 ? 1 : -1) * Math.abs(m)})`);
+    p.warr.setAttribute('fill', m < 0 ? C.coral : C.gold);
+  }
+}
+function renderTag(t) {
+  const vis = t.s > 0.004;
+  show(t.g, vis);
+  if (!vis) return;
+  const q = t.pond ? proj(t.x, t.y) : [t.x, t.y];
+  const bobY = t.pond ? S.bob * 4 * per(curT, 17 + (t.x % 5), t.x) : 0;
+  setT(t.g, q[0], q[1] + bobY, t.s, t.rot + (t.pond ? S.bob * 2 * per(curT, 13, t.y) : 0));
+  const txt = fmtPrice(t.v, t.kind);
+  if (txt !== t.last) { t.tx.textContent = txt; t.last = txt; }
+  t.bg.setAttribute('fill', mix(C.cream, C.coral, t.c));
+  t.bg.setAttribute('stroke', t.own > 0.01 ? C.gold : C.ink);
+  t.bg.setAttribute('stroke-opacity', t.own > 0.01 ? t.own : 0.15);
+  t.bg.setAttribute('stroke-width', t.own > 0.01 ? 6 * t.own : 2);
+  const ink = mix(C.ink, C.cream, t.c);
+  t.tx.setAttribute('fill', ink); t.ic.setAttribute('stroke', ink);
+}
+function renderWords() {
+  for (const w of words) {
+    const vis = w.s > 0.004; show(w.g, vis);
+    if (vis) setT(w.g, w.x, w.y + w.dy, w.s, w.r, 1, w.sy);
+  }
+  for (const p of pills) {
+    const vis = p.s > 0.004; show(p.g, vis);
+    const lv = p.lead_t > 0.004; show(p.lead, lv); show(p.dot, lv);
+    if (vis) setT(p.g, p.x + (1 - p.s) * p.w / 2, p.y, p.s);
+    if (lv) {
+      const tp = people[p.target];
+      const hx = tp.X, hy = tp.Y - 158 * tp.Sc;
+      const [sx, sy] = toScreen(hx, hy);
+      const ax = p.x + p.w - 30, ay = p.y + 34;
+      const ex = lerp(ax, sx, p.lead_t), ey = lerp(ay, sy - 14, p.lead_t);
+      p.lead.setAttribute('d', `M${f1(ax)},${f1(ay)} L${f1(ex)},${f1(ey)}`);
+      p.dot.setAttribute('cx', f1(ex)); p.dot.setAttribute('cy', f1(ey));
+    }
+  }
+}
+function renderTitle() {
+  for (const row of titleRows) {
+    let any = false;
+    for (const L of row.letters) {
+      const vis = L.s > 0.004; show(L.e, vis); any = any || vis;
+      if (vis) L.e.setAttribute('transform', `translate(${f1(L.x)},${f1(row.y + (1 - L.s) * 30)}) rotate(${(L.r * (1 - L.s)).toFixed(2)}) scale(${(0.7 + 0.3 * L.s).toFixed(3)},${L.s.toFixed(3)})`);
+    }
+    const rv = row.rip > 0.004; show(row.ripple, rv);
+    if (rv) {
+      const rr = row.rip;
+      row.ripple.setAttribute('cx', 540); row.ripple.setAttribute('cy', f1(row.y + 6));
+      row.ripple.setAttribute('rx', f1(row.w * 0.5 * (0.4 + 0.8 * rr))); row.ripple.setAttribute('ry', f1(14 + 16 * rr));
+      row.ripple.setAttribute('stroke-opacity', (0.8 * Math.sin(Math.PI * clamp(rr))).toFixed(3));
+    }
+  }
+  // silhouette medallion
+  const ms = S.sil > 0.004;
+  show(medalInner, ms);
+  if (ms) medalInner.setAttribute('transform', `translate(${f1(SIL.x)},${f1(SIL.y - 96 * S.sil + S.silY)}) scale(${(0.6 + 0.4 * S.sil).toFixed(3)},${S.sil.toFixed(3)})`);
+  const rv = S.silRip > 0.004 && S.silRip < 0.999; show(silRing, rv);
+  if (rv) {
+    silRing.setAttribute('cx', f1(SIL.x)); silRing.setAttribute('cy', f1(SIL.y));
+    silRing.setAttribute('rx', f1(30 + 90 * S.silRip)); silRing.setAttribute('ry', f1(12 + 30 * S.silRip));
+    silRing.setAttribute('stroke-opacity', (Math.sin(Math.PI * S.silRip)).toFixed(3));
+  }
+  for (const n of notes) {
+    const fv = n.p > 0.001 && n.d < 0.999; show(n.g, fv);
+    if (fv) {
+      const u = n.p;
+      const x = lerp(n.x0, n.lx, u), y = lerp(n.y0, n.ly, u) - Math.sin(Math.PI * u) * 160;
+      const rot = 25 * Math.sin(u * 9 + n.ph) * (1 - n.d);
+      const sc = 1 - n.d;
+      n.g.setAttribute('transform', `translate(${f1(x)},${f1(y + n.d * 10)}) rotate(${rot.toFixed(2)}) scale(${(sc * (1 + 0.15 * Math.sin(u * 14))).toFixed(3)},${(sc * (0.6 + 0.4 * Math.abs(Math.cos(u * 7 + n.ph)))).toFixed(3)})`);
+    }
+    const rv2 = n.d > 0.001 && n.d < 0.999; show(n.ring, rv2);
+    if (rv2) {
+      n.ring.setAttribute('cx', n.lx); n.ring.setAttribute('cy', f1(n.ly + 10));
+      n.ring.setAttribute('rx', f1(20 + 70 * n.d)); n.ring.setAttribute('ry', f1(8 + 24 * n.d));
+      n.ring.setAttribute('stroke-opacity', (1 - n.d).toFixed(3));
+    }
+  }
+}
+function renderDrop() {
+  const d = S.drop;
+  const pulse = 1 + 0.08 * per(curT, 39);
+  dropG.setAttribute('transform', `translate(${f1(d.x)},${f1(d.y)})`);
+  const r = 44 * d.s;
+  dropBody.setAttribute('d', dropPath(d.tip));
+  dropBody.setAttribute('transform', `scale(${(r * d.sx).toFixed(3)},${(r * d.sy).toFixed(3)})`);
+  dropHi.setAttribute('d', `M-0.45,-0.25 Q-0.5,0.2 -0.2,0.45`);
+  dropHi.setAttribute('transform', `scale(${(r * d.sx).toFixed(3)},${(r * d.sy).toFixed(3)})`);
+  dropGlow.setAttribute('transform', `scale(${(d.s * d.glow * pulse * 1.1).toFixed(3)},${(d.s * d.glow * pulse * 1.1 * lerp(1, S.tilt, d.tip < 0.5 ? 1 : 0)).toFixed(3)})`);
+}
+function renderCoins() {
+  const FALL_START = DUR - 0.25, Y0 = 560, Y1 = HOOK[0].y - 58 * HOOK_S - 30 + 8;
+  coins.forEach((c, i) => {
+    let y = c.y, sx = c.sx, sy = c.sy, s = c.s, x = c.x;
+    // the hook coins fall across the loop seam: t in [DUR-0.25, DUR) U [0, 0.25)
+    const tau = curT >= FALL_START ? curT - FALL_START : (curT < 0.25 ? curT + 0.25 : -1);
+    if (tau >= 0) { const u = tau / 0.5; y = Y0 + (Y1 - Y0) * u * u; sx = 1 - 0.1 * u; sy = 1 + 0.16 * u; s = 1; x = HOOK[i].x; }
+    const vis = s > 0.004; show(coinEls[i], vis);
+    if (vis) coinEls[i].setAttribute('transform', `translate(${f1(x)},${f1(y)}) scale(${(s * sx).toFixed(4)},${(s * sy).toFixed(4)})`);
+  });
+}
+function renderFx() {
+  const sp = S.splash;
+  const on = sp > 0.001 && sp < 0.999;
+  for (const d of drops) {
+    show(d.c, on);
+    if (on) {
+      const dist = d.v * Math.sqrt(sp) * 1.4;
+      const x = PC.x + Math.cos(d.a) * dist, y = PC.y + Math.sin(d.a) * dist * 0.55 - d.up * Math.sin(Math.PI * sp);
+      const r = d.r * Math.sin(Math.PI * Math.min(1, sp * 1.3 + 0.05));
+      d.c.setAttribute('cx', f1(x)); d.c.setAttribute('cy', f1(y));
+      d.c.setAttribute('rx', f1(Math.max(0, r))); d.c.setAttribute('ry', f1(Math.max(0, r * 1.25)));
+    }
+  }
+  const fl = S.flash, fo = fl > 0.001 && fl < 0.999; show(flashRing, fo);
+  if (fo) {
+    flashRing.setAttribute('cx', PC.x); flashRing.setAttribute('cy', PC.y);
+    flashRing.setAttribute('rx', f1(20 + 150 * fl)); flashRing.setAttribute('ry', f1((20 + 150 * fl) * S.tilt));
+    flashRing.setAttribute('stroke-opacity', (1 - fl).toFixed(3)); flashRing.setAttribute('stroke-width', f1(14 * (1 - fl) + 1));
+  }
+}
+function renderAmbient() {
+  for (const p of parts) {
+    const y = ((p.y0 - (H + 40) * p.cyc * curT / DUR) % (H + 40) + (H + 40)) % (H + 40) - 20;
+    const x = p.x0 + p.sw * per(curT, p.swc, p.ph);
+    p.c.setAttribute('cx', f1(x)); p.c.setAttribute('cy', f1(y));
+    p.c.setAttribute('fill-opacity', (p.o * (0.7 + 0.3 * per(curT, p.swc + 2, p.ph))).toFixed(3));
+  }
+  const sh = S.shim > 0.004; show(lShim, sh);
+  if (sh) {
+    for (const s of shims) {
+      const r = s.r * S.pondR, a0 = s.a0 + s.dir * TAU * s.cyc * curT / DUR;
+      let d = '';
+      for (let k = 0; k <= 10; k++) {
+        const a = a0 + s.len * k / 10;
+        const q = proj(PC.x + r * Math.sin(a), PC.y - r * Math.cos(a));
+        d += (k ? 'L' : 'M') + f1(q[0]) + ',' + f1(q[1]);
+      }
+      s.p.setAttribute('d', d);
+      s.p.setAttribute('stroke-opacity', (S.shim * (0.18 + 0.16 * per(curT, s.cyc * 7, s.ph))).toFixed(3));
+    }
+  }
+}
+function render() {
+  curT = tl ? tl.time() : 0;
+  cam.setAttribute('transform', `translate(${f1(S.camAx)},${f1(S.camAy)}) scale(${S.camS.toFixed(4)}) translate(${f1(-S.camFx)},${f1(-S.camFy)})`);
+  renderAmbient();
+  for (const k of ['disk', 'gap', 'mid', 'in', 'wave', 'rip', 'rim']) renderMorph(M[k]);
+  // rim points for riders (arrow / curl / pond rim)
+  rimCache = null;
+  if (people[0].ride > 0 || people[1].ride > 0) {
+    const i = Math.min(Math.floor(S.kRim), 4), f = clamp(S.kRim - i);
+    const sh = M.rim.shapes;
+    rimCache = f <= 0 ? sh[i]() : lerpPts(sh[i](), sh[i + 1](), f);
+  }
+  // arrowhead on the timeline arrow
+  const ah = S.arrowHead > 0.004; show(arrowHead, ah);
+  if (ah) {
+    const P = curlPts(), a = P[N - 1], b = P[N - 4];
+    const ang = Math.atan2(a[1] - b[1], a[0] - b[0]) * 180 / Math.PI;
+    arrowHead.setAttribute('transform', `translate(${f1(a[0])},${f1(a[1])}) rotate(${ang.toFixed(2)}) scale(${S.arrowHead.toFixed(3)})`);
+  }
+  renderTitle();
+  renderFx();
+  tags.forEach(renderTag);
+  people.forEach(renderPerson);
+  renderCoins();
+  renderDrop();
+  renderWords();
+  if (S._dbg) S._dbg.textContent = 't=' + curT.toFixed(2);
+}
+
+/* =====================================================================
+   14. SOUND (optional ?sfx=1, needs a tap to unlock)
+   ===================================================================== */
+const sfx = (() => {
+  let ac = null, lastTick = 0;
+  const ok = () => P_SFX && ac && ac.state === 'running' && tl && !tl.paused();
+  function unlock() { if (!P_SFX) return; if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); ac.resume(); }
+  function tone(f0, f1_, dur, type, vol) {
+    const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1_, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + 0.02);
+  }
+  return {
+    unlock,
+    plip() { if (ok()) { tone(900, 220, 0.35, 'sine', 0.35); tone(1800, 600, 0.12, 'triangle', 0.08); } },
+    shimmer() { if (ok()) for (let i = 0; i < 6; i++) setTimeout(() => ok() && tone(700 + i * 160, 900 + i * 200, 0.5, 'sine', 0.05), i * 90); },
+    tick() { if (!ok()) return; const n = performance.now(); if (n - lastTick < 55) return; lastTick = n; tone(2400, 2000, 0.03, 'square', 0.03); },
+    pop() { if (ok()) tone(500, 900, 0.08, 'sine', 0.06); },
+  };
+})();
+
+/* =====================================================================
+   15. VOICEOVER (debug ?vo=1 — timing check only)
+   ===================================================================== */
+const VO_LINES = [
+  [0.1, 'Two people get the exact same hundred dollars. One gets richer. One gets poorer.'],
+  [5.1, "The difference isn't how much they got. It's when they got it."],
+  [10.1, 'Economists call this the Cantillon Effect, after Richard Cantillon, a banker who noticed it in the 1700s, watching a flood of new paper money move through France.'],
+  [17.1, 'Picture the economy as a still pond. Everyone lives somewhere around it. Everything costs what it costs, and the water is calm.'],
+  [25.1, "Now, new money is created. But it doesn't rain down on everyone equally. It lands in one spot."],
+  [31.1, 'Right at the center are the first receivers: banks, big financial players, whoever the new money flows to first. They get to spend it while prices are still the old prices.'],
+  [40.1, 'As they spend, the money ripples outward. Businesses get more orders. Some wages go up. But with every ring it travels, prices have already started climbing.'],
+  [48.1, 'By the time the money reaches the edge — workers on fixed wages, savers, retirees — prices have already risen. They get the money last, and pay the new prices first.'],
+  [57.1, 'Zoom out, and it looks like this. Assets like houses and stocks rise first. Wages catch up later, if they catch up at all.'],
+  [66.1, "It's not a conspiracy. It's just how the plumbing works. Economists still debate how big the effect is and whether the benefits of new money outweigh it."],
+  [72.1, "So next time you hear about new money, don't just ask how much. Ask: who gets it first?"],
+];
+function speak(text) {
+  if (!P_VO || !('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text); u.rate = 1.08 * P_SPEED; speechSynthesis.speak(u);
+}
+
+/* =====================================================================
+   16. MASTER TIMELINE
+   ===================================================================== */
+let tl = null;
+function build() {
+  // ---- build text now that fonts are measured correctly ----
+  const TX = {};
+  TX.same = makeText([{ text: 'SAME MONEY.', size: 104 }], 1290);
+  TX.diff = makeText([{ text: 'DIFFERENT ENDING.', size: 104, color: C.gold }], 1420);
+  TX.when = makeText([{ text: "IT'S ABOUT", size: 100 }, { text: 'WHEN.', size: 170, color: C.gold, gap: 10 }], 820);
+  TX.econ = makeText([{ text: 'THE ECONOMY', size: 76 }], 520);
+  TX.lands = makeText([{ text: 'IT LANDS IN', size: 104 }, { text: 'ONE SPOT.', size: 130, color: C.gold }], 360);
+  TX.first = makeText([{ text: 'FIRST IN LINE', size: 110, color: C.gold }], 420);
+  TX.oldp = makeText([{ text: 'OLD PRICES.', size: 120 }], 420);
+  TX.faster = makeText([{ text: 'PRICES MOVE', size: 104 }, { text: 'FASTER.', size: 150, color: C.coral }], 350);
+  TX.last = makeText([{ text: 'LAST IN LINE.', size: 116 }], 420);
+  TX.newp = makeText([{ text: 'NEW PRICES.', size: 124, color: C.coral }], 420);
+  TX.gap = makeText([{ text: 'THE GAP.', size: 140, color: C.coral }], 470);
+  TX.consp = makeText([{ text: 'NOT A', size: 104 }, { text: 'CONSPIRACY.', size: 124 }], 380);
+  TX.plumb = makeText([{ text: 'JUST', size: 104 }, { text: 'PLUMBING.', size: 140, color: C.teal2 }], 380);
+  TX.who = makeText([{ text: 'WHO GETS', size: 146 }, { text: 'IT FIRST?', size: 146, color: C.gold, gap: 4 }], 1250);
+  TX.y1730 = makeText([{ text: '1730s', size: 64, color: C.gold }], SIL.y - 110, { x: SIL.x + 190 });
+  const CL = {
+    assets: makeChartLabel('ASSETS', 800, 740, C.gold),
+    wages: makeChartLabel('WAGES', 810, 1250, C.slate2),
+  };
+  const PL = {
+    govt: makePill('GOVERNMENT CONTRACTORS', 70, 380, 3),
+    asset: makePill('ASSET HOLDERS', 70, 480, 2),
+    banks: makePill('BANKS', 70, 580, 0),
+    wage: makePill('WAGE EARNERS', 70, 360, 10, C.slate2),
+    savers: makePill('SAVERS', 70, 460, 9, C.slate2),
+    retire: makePill('RETIREES', 70, 560, 15, C.slate2),
+  };
+  // ---- title letters (rise out of the water like reeds) ----
+  [['THE', 960, 84], ['CANTILLON', 1076, 124], ['EFFECT', 1190, 118]].forEach(([str, y, size], ri) => {
+    let widths = str.split('').map(ch => measure(ch, size, FONT_HEAD, 700));
+    let tot = widths.reduce((a, b) => a + b, 0) + (str.length - 1) * 2;
+    if (tot > 600) { const k = 600 / tot; size *= k; widths = widths.map(w => w * k); tot = 600; }
+    const ripple = el('ellipse', { fill: 'none', stroke: C.teal2, 'stroke-width': 4 }, lTitle);
+    let x = 540 - tot / 2; const letters = [];
+    str.split('').forEach((ch, ci) => {
+      const e = el('text', { 'text-anchor': 'middle', 'font-size': size.toFixed(1), 'font-family': FONT_HEAD, 'font-weight': 700, fill: ri === 1 ? C.gold : C.cream, display: 'none' }, lTitle);
+      e.textContent = ch;
+      letters.push({ e, x: x + widths[ci] / 2, s: 0, r: (rnd(ri * 20 + ci) - 0.5) * 30 });
+      x += widths[ci] + 2;
+    });
+    titleRows.push({ y, letters, ripple, rip: 0, w: tot });
+  });
+
+  const t = gsap.timeline({ repeat: -1, paused: true, defaults: { ease: 'power3.inOut' } });
+  tl = t;
+  const pp = people, D = S.drop;
+  const P0 = pp[0], P1 = pp[1], EXTRA = pp.slice(2), CENTER = [pp[0], pp[2], pp[3]];
+  const MIDDLE = pp.slice(4, 9), OUTER = [pp[1]].concat(pp.slice(9));
+  const popIn = (ws, at, stg = 0.09) => { t.to(ws, { s: 1, r: 0, duration: 0.55, ease: 'back.out(1.7)', stagger: stg }, at); t.call(() => sfx.pop(), null, at); };
+  const popOut = (ws, at) => t.to(ws, { s: 0, duration: 0.32, ease: 'back.in(1.7)', stagger: 0.04 }, at);
+  const pillIn = (pl, at) => { t.to(pl, { s: 1, duration: 0.5, ease: 'back.out(1.7)' }, at); t.to(pl, { lead_t: 1, duration: 0.45, ease: 'power2.out' }, at + 0.25); };
+  const pillOut = (pl, at) => { t.to(pl, { lead_t: 0, duration: 0.25, ease: 'power2.in' }, at); t.to(pl, { s: 0, duration: 0.3, ease: 'back.in(1.7)' }, at + 0.12); };
+  VO_LINES.forEach(([at, line]) => t.call(() => speak(line), null, at));
+
+  // ============ SCENE 0 — THE HOOK (0–5) ============
+  t.addLabel('s0_hook', 0);
+  // coins land at 0.25 (they fall across the loop seam, see renderCoins)
+  const landY = HOOK[0].y - 58 * HOOK_S - 30 + 8;
+  t.set(coins, { y: landY, x: i => HOOK[i].x, s: 1, sx: 1.35, sy: 0.55 }, 0.25);
+  t.to(coins, { sx: 1, sy: 1, duration: 0.9, ease: 'elastic.out(1,0.45)' }, 0.25);
+  t.fromTo([P0, P1], { sq: 0.9 }, { sq: 1, duration: 0.8, ease: 'elastic.out(1,0.5)', immediateRender: false }, 0.25);
+  t.call(() => sfx.plip(), null, 0.25);
+  t.to(HT, { s: 1, rot: 0, duration: 0.5, ease: 'back.out(1.7)', stagger: 0.07 }, 0.55);
+  popIn(TX.same, 1.0);
+  t.to(P0.w, { v: 131, mode: 1, duration: 2.2, ease: 'power2.inOut' }, 1.7);
+  t.to(P1.w, { v: 69, mode: -1, duration: 2.2, ease: 'power2.inOut' }, 1.7);
+  t.to(HT.slice(0, 3), { s: 0.68, duration: 2.2, ease: 'power2.inOut' }, 1.7);
+  t.to(HT.slice(3), { s: 1.45, c: 1, duration: 2.2, ease: 'power2.inOut' }, 1.7);
+  t.to(HT.slice(3, 5), { v: (i, tg) => tg.kind === 'k' ? 560 : 4.2, duration: 2.2, ease: 'power2.inOut' }, 1.7);
+  t.to(HT[5], { v: 2.1, duration: 2.2, ease: 'power2.inOut' }, 1.7);
+  popIn(TX.diff, 2.6);
+  popOut(TX.same.concat(TX.diff), 4.55);
+
+  // ============ SCENE 1 — THE QUESTION (5–10) ============
+  t.addLabel('s1_when', 5);
+  t.to(HT, { s: 0, duration: 0.35, ease: 'back.in(1.7)', stagger: 0.03 }, 4.9);
+  t.to([P0.w, P1.w], { s: 0, duration: 0.35, ease: 'back.in(1.7)' }, 5.0);
+  t.set([P0.w, P1.w], { v: 100, mode: 0 }, 5.5);
+  // anticipation dip, then coins lift, converge and merge into the source drop
+  t.to(coins, { y: '+=16', sy: 0.85, sx: 1.1, duration: 0.18, ease: 'power2.out' }, 5.0);
+  t.to(coins, { x: SRC.x, y: SRC.y + 20, sx: 1, sy: 1, duration: 0.85, ease: 'power3.in' }, 5.18);
+  t.to(coins, { s: 0.25, duration: 0.3, ease: 'power2.in' }, 5.75);
+  t.set(coins, { s: 0 }, 6.05);
+  t.to([P0, P1], { hold: 0, duration: 0.5, ease: 'power2.out' }, 5.1);
+  t.to(S, { kMid: 1, duration: 0.8, ease: 'power3.in' }, 5.15);
+  t.to(D, { s: 1.0, duration: 0.9, ease: 'elastic.out(1,0.45)' }, 6.02);
+  t.fromTo(D, { sx: 1.35, sy: 0.7 }, { sx: 1, sy: 1, duration: 0.8, ease: 'elastic.out(1,0.4)', immediateRender: false }, 6.02);
+  // winding line straightens into the timeline arrow; people ride out onto it
+  t.to(S, { kRim: 1, duration: 1.4 }, 5.7);
+  t.to([P0, P1], { ride: 1, duration: 1.4, stagger: 0.08 }, 5.7);
+  t.to(S, { arrowHead: 1, duration: 0.5, ease: 'back.out(2)' }, 6.8);
+  t.to(D, { x: ARROW.x0 + 20, y: ARROW.y - 70, s: 0.8, duration: 1.0 }, 6.6);
+  popIn(TX.when, 7.2, 0.14);
+  popOut(TX.when, 8.75);
+  // the arrow bends down and curls into a circle -> pond
+  t.to(S, { curl: 1, duration: 1.25, ease: 'power2.inOut' }, 8.85);
+  t.to(S, { arrowHead: 0, duration: 0.5, ease: 'back.in(2)' }, 9.4);
+  t.to(D, { x: SRC.x, y: 330, s: 0.9, duration: 1.3 }, 8.9);
+  t.set(S, { kDisk: 1 }, 9.9);
+  t.to(S, { fill: 1, duration: 0.45, ease: 'power2.out' }, 9.9);
+  t.to(S, { kRim: 2, duration: 0.05, ease: 'none' }, 10.1);
+
+  // ============ SCENE 2 — TITLE + ORIGIN (10–17) ============
+  t.addLabel('s2_title', 10);
+  t.set(S, { kDisk: 2 }, 10.36);
+  t.to(S, { pondR: 330, duration: 1.3, ease: 'elastic.out(1,0.6)' }, 10.36);
+  t.to(S, { shim: 1, duration: 1.5, ease: 'power1.inOut' }, 10.6);
+  titleRows.forEach((row, ri) => {
+    const at = 10.9 + ri * 0.35;
+    t.to(row.letters, { s: 1, duration: 0.7, ease: 'back.out(1.8)', stagger: 0.05 }, at);
+    t.fromTo(row, { rip: 0 }, { rip: 1, duration: 1.2, ease: 'power2.out', immediateRender: false }, at);
+  });
+  t.to(S, { silRip: 1, duration: 1.1, ease: 'power1.out' }, 12.6);
+  t.to(S, { sil: 1, duration: 0.8, ease: 'back.out(1.6)' }, 12.7);
+  popIn(TX.y1730, 13.1);
+  notes.forEach((n, i) => {
+    const at = 13.5 + i * 0.25;
+    t.to(n, { p: 1, duration: 1.3, ease: 'power1.inOut' }, at);
+    t.to(n, { d: 1, duration: 0.7, ease: 'power2.in' }, at + 1.3);
+  });
+  // title sinks back into the water as ripples
+  titleRows.forEach((row, ri) => {
+    const at = 15.75 + ri * 0.12;
+    t.to(row.letters, { s: 0, duration: 0.45, ease: 'back.in(1.5)', stagger: 0.03 }, at);
+    t.fromTo(row, { rip: 0 }, { rip: 1, duration: 1.0, ease: 'power2.out', immediateRender: false }, at + 0.1);
+  });
+  popOut(TX.y1730, 15.9);
+  t.to(S, { silY: 90, sil: 0, duration: 0.5, ease: 'back.in(1.4)' }, 16.0);
+  // the silhouette's ripple expands into the rings of the pond
+  t.set(S, { kMid: 2, kIn: 0 }, 16.0);
+  t.to(S, { kMid: 3, duration: 0.45, ease: 'power2.out' }, 16.2);
+  t.to(S, { kMid: 4, duration: 1.1, ease: 'power3.inOut' }, 16.65);
+  t.to(S, { kIn: 1, duration: 0.45, ease: 'power2.out' }, 16.4);
+  t.to(S, { kIn: 2, duration: 1.1, ease: 'power3.inOut' }, 16.85);
+  t.to(S, { pondR: 400, duration: 1.3, ease: 'elastic.out(1,0.7)' }, 16.4);
+
+  // ============ SCENE 3 — THE ECONOMY AS A POND (17–25) ============
+  t.addLabel('s3_pond', 17);
+  t.to([P0, P1], { pondT: 1, duration: 1.1, stagger: 0.15 }, 17.1);
+  t.to(EXTRA, { pop: 1, duration: 0.55, ease: 'back.out(2)', stagger: { each: 0.06, from: 'start' } }, 17.3);
+  t.fromTo(EXTRA, { sq: 0.7 }, { sq: 1, duration: 0.7, ease: 'elastic.out(1,0.5)', stagger: 0.06, immediateRender: false }, 17.45);
+  t.to(S, { bob: 1, duration: 1.5, ease: 'power1.inOut' }, 18.2);
+  t.to(Object.values(PT), { s: 1, rot: 0, duration: 0.5, ease: 'back.out(1.7)', stagger: 0.12 }, 18.7);
+  popIn(TX.econ, 19.4);
+  t.to(TX.econ, { dy: 170, sy: 0, duration: 0.9, ease: 'power2.in', stagger: 0.08 }, 23.6);
+  t.set(TX.econ, { s: 0, dy: 0, sy: 1 }, 24.7);
+
+  // ============ SCENE 4 — THE DROP (25–31) ============
+  t.addLabel('s4_drop', 25);
+  // anticipation: camera eases back, drop pulls up and squashes
+  t.to(S, { camS: 0.92, camFx: PC.x, camFy: PC.y, camAx: PC.x, camAy: PC.y, duration: 0.7, ease: 'power2.out' }, 25.0);
+  t.to(D, { y: 290, sx: 1.18, sy: 0.84, duration: 0.6, ease: 'power2.out' }, 25.05);
+  t.to(D, { y: PC.y, sx: 0.78, sy: 1.32, duration: 0.55, ease: 'power2.in' }, 25.7);
+  t.to(S, { camS: 1.0, duration: 0.55, ease: 'power3.in' }, 25.7);
+  const HIT = 26.25;
+  t.set(D, { sx: 1.9, sy: 0.35 }, HIT);
+  t.set(S, { flash: 0.12, splash: 0.08 }, HIT);
+  t.call(() => sfx.plip(), null, HIT);
+  // 120ms hit-stop: nothing tweens between HIT and HIT+0.12
+  const GO = HIT + 0.12;
+  t.to(S, { flash: 1, duration: 0.7, ease: 'power2.out' }, GO);
+  t.to(S, { splash: 1, duration: 1.0, ease: 'power1.out' }, GO);
+  t.to(D, { tip: 0, sx: 0.78, sy: 0.78, s: 0.9, glow: 1.6, duration: 1.0, ease: 'elastic.out(1,0.5)' }, GO);
+  t.set(S, { kRip: 1, kWave: 0, rippleR: 0 }, GO);
+  t.to(S, { rippleR: 140, duration: 1.8, ease: 'elastic.out(1,0.5)' }, GO);
+  t.call(() => sfx.shimmer(), null, GO);
+  popIn(TX.lands, 27.0);
+  t.to(S, { camS: 1.05, duration: 3.4, ease: 'sine.inOut' }, 27.4);
+  popOut(TX.lands, 30.4);
+
+  // ============ SCENE 5 — FIRST IN LINE (31–40) ============
+  t.addLabel('s5_first', 31);
+  t.to(S, { camS: 1.9, camAy: 1150, duration: 1.4 }, 30.9);
+  t.to(CENTER, { gold: 1, duration: 0.5, ease: 'back.out(2)', stagger: 0.12 }, 31.6);
+  popIn(TX.first, 31.8);
+  popOut(TX.first, 33.7);
+  pillIn(PL.govt, 34.0); pillIn(PL.asset, 34.35); pillIn(PL.banks, 34.7);
+  // they grab the tags near them — still at the old prices
+  const grab = [[P0, PT.house, -52, -58], [pp[2], PT.stock, 58, -60], [pp[3], PT.bldg, 58, -58]];
+  grab.forEach(([p, tg, dx, dy], i) => {
+    const at = 35.2 + i * 0.2;
+    t.to(p, { hold: 0.6, duration: 0.35, ease: 'power2.out' }, at);
+    t.to(tg, { x: p.pond.x + dx, y: p.pond.y + dy, s: 0.72, own: 1, duration: 0.7, ease: 'back.out(1.4)' }, at + 0.1);
+  });
+  pillOut(PL.banks, 36.4); pillOut(PL.asset, 36.5); pillOut(PL.govt, 36.6);
+  popIn(TX.oldp, 36.9);
+  CENTER.forEach(p => t.set(p.w, { ws: 0.62, v: 100, mode: 0 }, 36.8));
+  t.to(CENTER.map(p => p.w), { s: 1, duration: 0.45, ease: 'back.out(1.8)', stagger: 0.1 }, 37.0);
+  // the water rises in the centre AFTER they bought: their tags float up and gain value
+  t.set(S, { kGap: 1, raisedR: 0.01 }, 37.6);
+  t.to(S, { raisedR: 150, duration: 2.0, ease: 'none' }, 37.6);
+  grab.forEach(([p, tg]) => t.to(tg, { y: '-=26', s: 0.8, duration: 2.0, ease: 'power1.inOut' }, 37.6));
+  t.to(PT.house, { v: 520, duration: 2.0, ease: 'power1.inOut' }, 37.7);
+  t.to(PT.stock, { v: 140, duration: 2.0, ease: 'power1.inOut' }, 37.7);
+  t.to(PT.bldg, { v: 2.6, duration: 2.0, ease: 'power1.inOut' }, 37.7);
+  t.to(CENTER.map(p => p.w), { v: 160, mode: 1, duration: 2.0, ease: 'power1.inOut' }, 37.8);
+  popOut(TX.oldp, 39.6);
+
+  // ============ SCENE 6 — THE RIPPLE SPREADS (40–48) ============
+  t.addLabel('s6_ripple', 40);
+  t.to(S, { camS: 1.0, camAy: PC.y, duration: 1.4 }, 40.0);
+  t.to(CENTER.map(p => p.w), { ws: 0.95, duration: 1.4 }, 40.0);
+  t.to(CENTER, { hold: 0, duration: 0.6 }, 40.2);
+  t.to(Object.values(PT).slice(0, 3), { s: 1.05, duration: 1.4 }, 40.0);
+  t.set(S, { kWave: 1 }, 40.9);
+  t.call(() => sfx.shimmer(), null, 41.0);
+  t.to(S, { rippleR: 265, duration: 5.0, ease: 'power1.inOut' }, 41.0);
+  t.to(S, { raisedR: 262, duration: 5.0, ease: 'none' }, 41.0);
+  const midTags = [PT.gas, PT.bread, PT.cart];
+  t.to(midTags, { s: 1.28, c: 1, duration: 3.2, ease: 'power1.inOut', stagger: 0.25 }, 42.0);
+  t.to(PT.gas, { v: 1.98, duration: 3.2, ease: 'power1.inOut' }, 42.0);
+  t.to(PT.bread, { v: 3.9, duration: 3.2, ease: 'power1.inOut' }, 42.25);
+  t.to(PT.cart, { v: 66, duration: 3.2, ease: 'power1.inOut' }, 42.5);
+  t.to([PT.house, PT.stock, PT.bldg], { c: 0.35, duration: 3, ease: 'power1.inOut' }, 42);
+  t.to(PT.house, { v: 560, duration: 4 }, 42); t.to(PT.stock, { v: 155, duration: 4 }, 42);
+  t.to(MIDDLE, { gold: 0.45, duration: 0.5, ease: 'back.out(2)', stagger: 0.12 }, 43.2);
+  MIDDLE.forEach(p => t.set(p.w, { ws: 0.95, v: 100, mode: 0 }, 43.0));
+  t.to(MIDDLE.map(p => p.w), { s: 1, duration: 0.45, ease: 'back.out(1.8)', stagger: 0.1 }, 43.4);
+  t.to(MIDDLE.map(p => p.w), { v: 110, mode: 0.5, duration: 2.2, ease: 'power1.inOut' }, 44.0);
+  popIn(TX.faster, 43.1);
+  popOut(TX.faster, 47.4);
+  t.to(CENTER.concat(MIDDLE).map(p => p.w), { s: 0, duration: 0.35, ease: 'back.in(1.7)', stagger: 0.03 }, 47.3);
+
+  // ============ SCENE 7 — LAST IN LINE (48–57) ============
+  t.addLabel('s7_last', 48);
+  t.to(S, { rippleR: 372, waveLead: 20, duration: 2.2, ease: 'power2.out' }, 48.0);
+  t.to(S, { raisedR: 395, duration: 2.0, ease: 'none' }, 47.9);
+  t.to(M.rip.styles[1], { w: 2.5, o: 0.45, duration: 2.2, ease: 'power2.out' }, 48.0);
+  const outerTags = [PT.bread2, PT.rent, PT.cart2];
+  t.to(outerTags, { s: 1.35, c: 1, duration: 1.8, ease: 'power2.inOut', stagger: 0.15 }, 48.2);
+  t.to(PT.bread2, { v: 4.5, duration: 1.8, ease: 'power2.inOut' }, 48.2);
+  t.to(PT.rent, { v: 1700, duration: 1.8, ease: 'power2.inOut' }, 48.35);
+  t.to(PT.cart2, { v: 74, duration: 1.8, ease: 'power2.inOut' }, 48.5);
+  t.to([PT.gas, PT.bread, PT.cart], { s: 1.35, duration: 1.8 }, 48.2);
+  pillIn(PL.wage, 48.9); pillIn(PL.savers, 49.2); pillIn(PL.retire, 49.5);
+  t.to(OUTER, { coinS: 1, hold: 0.35, duration: 0.45, ease: 'back.out(2.2)', stagger: 0.06 }, 50.1);
+  OUTER.forEach(p => t.set(p.w, { ws: 0.95, v: 100, mode: 0 }, 50.0));
+  t.to(OUTER.map(p => p.w), { s: 1, duration: 0.4, ease: 'back.out(1.8)', stagger: 0.05 }, 50.3);
+  t.to([PT.house, PT.stock, PT.bldg, PT.gas, PT.bread, PT.cart, PT.cart2], { s: 0, duration: 0.4, ease: 'back.in(1.7)', stagger: 0.04 }, 50.7);
+  pillOut(PL.retire, 51.0); pillOut(PL.savers, 51.1); pillOut(PL.wage, 51.2);
+  popIn(TX.last, 51.5);
+  // camera pushes in on the last person in line
+  const FEAT = P1.pond;
+  t.to(OUTER.filter(p => p !== P1).map(p => p.w), { s: 0, duration: 0.3, ease: 'back.in(1.7)' }, 51.1);
+  t.to(S, { camS: 2.0, camFx: FEAT.x, camFy: FEAT.y - 70, camAx: 540, camAy: 1150, duration: 1.6 }, 51.2);
+  t.to(P1.w, { ws: 0.75, duration: 1.6 }, 51.2);
+  t.to(P1, { up: 1, hold: 0, duration: 0.7, ease: 'back.out(1.6)' }, 52.4);
+  t.to(PT.bread2, { x: FEAT.x - 118, y: FEAT.y - 238, s: 1.15, rot: -6, duration: 1.2, ease: 'power2.inOut' }, 52.2);
+  t.to(PT.rent, { x: FEAT.x + 112, y: FEAT.y - 250, s: 1.15, rot: 5, duration: 1.2, ease: 'power2.inOut' }, 52.35);
+  t.to([PT.bread2, PT.rent], { y: '-=34', duration: 2.4, ease: 'sine.inOut' }, 53.4);
+  // the water level rises (the only linear motion in the piece)
+  t.to(OUTER.filter(p => p !== P1), { wl: 58, duration: 3.6, ease: 'none' }, 52.3);
+  t.to(P1, { wl: 116, duration: 3.6, ease: 'none' }, 52.3);
+  t.to(P1, { tiltH: 1, duration: 0.8, ease: 'power2.inOut' }, 54.9);
+  popOut(TX.last, 53.9);
+  popIn(TX.newp, 54.2);
+  popOut(TX.newp, 56.6);
+
+  // ============ SCENE 8 — THE FOLD: POND BECOMES CHART (57–66) ============
+  t.addLabel('s8_fold', 57);
+  t.to(S, { camS: 1, camFx: 540, camFy: 1000, camAx: 540, camAy: 1000, duration: 1.3 }, 57.0);
+  t.to(pp, { wl: 0, up: 0, hold: 0, tiltH: 0, coinS: 0, duration: 0.8, ease: 'power2.inOut' }, 57.1);
+  t.to(P1.w, { s: 0, duration: 0.35, ease: 'back.in(1.7)' }, 57.1);
+  t.set(pp.map(p => p.w), { v: 100, mode: 0 }, 58.0);
+  t.to(Object.values(PT), { s: 0, duration: 0.4, ease: 'back.in(1.7)', stagger: 0.04 }, 57.4);
+  t.to(S, { bob: 0, shim: 0, duration: 1.0 }, 57.6);
+  t.to(S, { tilt: 0.3, duration: 1.0, ease: 'power2.inOut' }, 57.8);
+  t.to(D, { glow: 1.2, duration: 1 }, 57.8);
+  const FOLD = 58.8;
+  t.to(S, { kRim: 3, kMid: 5, kIn: 3, kRip: 2, kWave: 2, kGap: 2, kDisk: 3, duration: 2.0, ease: 'power3.inOut' }, FOLD);
+  t.to(pp, { chart: 1, gold: 0, duration: 1.8, ease: 'power3.inOut', stagger: 0.03 }, FOLD + 0.15);
+  t.to(D, { x: CH.x0 + CH.w, y: CH.y0 - CH.h * 0.86, s: 0.55, duration: 2.0 }, FOLD);
+  popIn([CL.assets], 60.5); popIn([CL.wages], 60.8);
+  popIn(TX.gap, 61.8);
+  t.to(M.gap.styles[2], { o: 0.85, duration: 0.3, yoyo: true, repeat: 1, ease: 'power2.inOut' }, 62.2);
+  popOut(TX.gap, 65.5);
+
+  // ============ SCENE 9 — THE NUANCE (66–72) ============
+  t.addLabel('s9_nuance', 66);
+  t.to(S, { relax: 1, duration: 1.8, ease: 'power2.inOut' }, 66.0);
+  t.to(D, { y: CH.y0 - CH.h * 0.47, duration: 1.8, ease: 'power2.inOut' }, 66.0);
+  popIn(TX.consp, 66.3);
+  popOut([CL.assets, CL.wages], 67.0);
+  t.to(EXTRA, { pop: 0, duration: 0.35, ease: 'back.in(1.8)', stagger: 0.04 }, 67.3);
+  popOut(TX.consp, 68.4);
+  const SC = 68.3;
+  t.to(S, { kRim: 4, kMid: 6, kIn: 4, kRip: 3, kGap: 3, kDisk: 4, duration: 1.5, ease: 'power3.inOut' }, SC);
+  t.to([P0, P1], { pan: 1, duration: 1.5, ease: 'power3.inOut' }, SC + 0.05);
+  t.to(D, { x: PIVOT.x, y: PIVOT.y - 6, s: 0.45, glow: 1, duration: 1.5 }, SC);
+  t.to(S, { tipAmp: 1, duration: 1.2, ease: 'power1.inOut' }, SC + 1.1);
+  popIn(TX.plumb, 68.8);
+  popOut(TX.plumb, 71.5);
+
+  // ============ SCENE 10 — THE CLOSE + LOOP (72–78) ============
+  t.addLabel('s10_close', 72);
+  t.to(S, { tipAmp: 0, duration: 0.8, ease: 'power2.inOut' }, 72.0);
+  t.to([P0, P1], { back: 1, duration: 1.2, ease: 'back.inOut(1.4)', stagger: 0.1 }, 72.5);
+  t.to(S, { kIn: 5, kRip: 4, duration: 0.6, ease: 'power3.in' }, 72.7);
+  t.set(coins, { x: i => PAN_COIN[i][0], y: i => PAN_COIN[i][1], s: 1, sx: 1, sy: 1 }, 73.3);
+  t.to(S, { kIn: 6, kRip: 5, duration: 0.2, ease: 'none' }, 73.3);
+  t.fromTo(coins, { sx: 1.3, sy: 0.7 }, { sx: 1, sy: 1, duration: 0.6, ease: 'elastic.out(1,0.45)', immediateRender: false }, 73.3);
+  t.to(S, { kRim: 5, kMid: 7, kGap: 4, kDisk: 5, duration: 1.4, ease: 'power3.inOut' }, 73.1);
+  t.to(D, { x: SRC.x, y: SRC.y, s: 0.62, glow: 1, duration: 1.4 }, 73.1);
+  t.to(D, { tip: 1, sx: 1, sy: 1, duration: 0.7, ease: 'back.out(2)' }, 73.9);
+  t.to(coins, { x: i => HOOK[i].x, y: 560, duration: 1.1, ease: 'power3.inOut' }, 73.8);
+  t.to([P0, P1], { hold: 1, duration: 0.5 }, 74.2);
+  t.to([P0.w, P1.w], { s: 1, ws: 1.5, duration: 0.5, ease: 'back.out(1.8)', stagger: 0.08 }, 74.4);
+  popIn(TX.who, 75.0, 0.12);
+  popOut(TX.who, 76.95);
+  // reset every per-run value (all invisible here) so frame DUR == frame 0
+  t.set(S, { kRim: 0, kMid: 0, kIn: 0, kRip: 0, kWave: 0, kGap: 0, kDisk: 0, curl: 0, fill: 0, pondR: CURL_R0, tilt: 1, relax: 0, rippleR: 0, raisedR: 0, waveLead: 26, silY: 0, silRip: 0, splash: 0, flash: 0, camFy: 960, camAy: 960, camFx: 540, camAx: 540, camS: 1 }, DUR - 0.001);
+  t.set(pp, { ride: 0, chart: 0, pan: 0, back: 0, pondT: i => i < 2 ? 0 : 1, gold: 0, hold: i => i < 2 ? 1 : 0 }, DUR - 0.001);
+  t.set(tags, { s: 0, c: 0, own: 0 }, DUR - 0.001);
+  t.set({}, {}, DUR);
+  return t;
+}
+
+/* =====================================================================
+   17. BOOT
+   ===================================================================== */
+render();
+function start() {
+  build();
+  tl.timeScale(P_SPEED);
+  if (P_T !== null && !isNaN(P_T)) tl.seek(Math.max(0, Math.min(DUR, P_T)), true);
+  if (!P_PAUSE) tl.play();
+  gsap.ticker.add(render);
+  render();
+  window.__tl = tl; window.__render = () => render();
+  window.__ready = true;
+}
+const fontsReady = Promise.all([
+  document.fonts.load('700 100px "Space Grotesk"'),
+  document.fonts.load('600 40px "Inter"'),
+  document.fonts.load('500 40px "Inter"'),
+]).then(() => document.fonts.ready);
+Promise.race([fontsReady, new Promise(r => setTimeout(r, 2500))]).then(start, start);
+
+// single tap anywhere restarts (also unlocks optional audio)
+window.addEventListener('pointerdown', () => {
+  sfx.unlock();
+  if (!tl) return;
+  if (P_VO && 'speechSynthesis' in window) speechSynthesis.cancel();
+  tl.restart(); tl.play();
+});
+})();
+</script>
+</body>
+</html>
