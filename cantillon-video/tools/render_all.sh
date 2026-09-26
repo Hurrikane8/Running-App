@@ -5,7 +5,7 @@ set -e
 OUT=$1; K=${2:-3}; FPS=30
 DIR=$(cd "$(dirname "$0")/.." && pwd)
 TMP=$(mktemp -d)
-DUR=$(python3 -c "import json;print(json.load(open('$DIR/build/timeline.json'))['duration'])")
+DUR=$(python3 -c "import json;print(json.load(open('$DIR/${BUILD:-build}/timeline.json'))['duration'])")
 F=$(python3 -c "print(round($DUR*$FPS))")
 pids=()
 for ((k=0;k<K;k++)); do

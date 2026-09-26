@@ -1973,6 +1973,9 @@ function endScene() {
       kinetic('CANTILLON EFFECT', 960, 655, t, [tTitle + 0.1, tTitle + 0.25], { size: 132, weight: 900, fam: 'serif', color: P.cream });
       alpha(inv(tTitle + 0.6, tTitle + 1.0, t), () => scribble(600, 740, 1320, 740, inv(tTitle + 0.6, tTitle + 1.0, t), 10, P.gold, 4, 2));
       text('New money isn’t neutral. Who gets it first matters.', 960, 830, { size: 38, weight: 600, color: rgba(P.cream, 0.85), a: inv(tTitle + 0.9, tTitle + 1.4, t) });
+      const cr = inv(tTitle + 1.3, tTitle + 1.8, t);
+      alpha(cr, () => rect(900, 878, 120, 3, rgba(P.gold, 0.6)));
+      text('By Kane Gulka ft. Opus 5.5', 960, 922, { size: 34, weight: 700, ls: 1, color: P.gold, a: cr });
     }
     // final fade
     const ff = inv(tEnd - 1.3, tEnd - 0.1, t);

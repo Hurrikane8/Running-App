@@ -2,7 +2,7 @@
 // Every frame is a pure function of time t (seconds) so frames can be rendered
 // in any order and the output is fully deterministic.
 
-const W = 1920, H = 1080, CX = W / 2, CY = H / 2;
+const W = (window.FRAME && window.FRAME.w) || 1920, H = (window.FRAME && window.FRAME.h) || 1080, CX = W / 2, CY = H / 2;
 const TAU = Math.PI * 2;
 let ctx;
 

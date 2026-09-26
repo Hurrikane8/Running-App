@@ -1,0 +1,36 @@
+{
+  "voice": "af_heart",
+  "speed": 1.04,
+  "lead_in": 0.7,
+  "tail": 5.0,
+  "pronunciations": { "kˈæntɪlən": "kˌɑːntiːjˈoʊn" },
+  "music": { "build": "h4", "title": "h5", "end": "e3" },
+  "lines": [
+    { "id": "h1", "scene": "hook", "pause": 0.3, "text": "Imagine a machine that prints brand-new money." },
+    { "id": "h2", "scene": "hook", "pause": 0.15, "text": "If a million new dollars came out tomorrow," },
+    { "id": "h3", "scene": "hook", "pause": 0.7, "text": "would it matter who got them first?" },
+    { "id": "h4", "scene": "hook", "pause": 0.3, "text": "It does. It may be why your rent keeps climbing, and your savings keep shrinking." },
+    { "id": "h5", "scene": "hook", "pause": 1.2, "text": "It's called the Cantillon Effect." },
+
+    { "id": "c1", "scene": "cantillon", "pause": 0.35, "text": "Three hundred years ago, a Paris banker named Richard Cantillon noticed something." },
+    { "id": "c2", "scene": "cantillon", "pause": 1.0, "text": "New money doesn't spread evenly. It enters at one point, and ripples outward." },
+
+    { "id": "t1", "scene": "town", "pause": 0.35, "text": "Picture a tiny town where bread costs one dollar." },
+    { "id": "t2", "scene": "town", "pause": 0.35, "text": "New money goes to the banker first. He spends it right away, at yesterday's prices." },
+    { "id": "t3", "scene": "town", "pause": 0.35, "text": "Next, it reaches the builder. Prices start to creep up. Then the shopkeeper. Bread hits a dollar fifty." },
+    { "id": "t4", "scene": "town", "pause": 0.45, "text": "By the time it reaches the teacher and the retiree, their incomes haven't changed. But bread now costs two dollars." },
+    { "id": "t5", "scene": "town", "pause": 1.0, "text": "Nobody stole anything. But wealth quietly moved, from the back of the line to the front." },
+
+    { "id": "m1", "scene": "modern", "pause": 0.2, "text": "Today, new money flows first to banks, governments, and big investors," },
+    { "id": "m2", "scene": "modern", "pause": 0.4, "text": "who buy assets like stocks and real estate before prices move." },
+    { "id": "m3", "scene": "modern", "pause": 1.0, "text": "Wages are almost always last." },
+
+    { "id": "y1", "scene": "you", "pause": 0.4, "text": "So if you earn a paycheck, your raise shows up after prices have already moved." },
+    { "id": "y2", "scene": "you", "pause": 0.4, "text": "If you save in cash, it's like walking up an escalator that's going down." },
+    { "id": "y3", "scene": "you", "pause": 1.0, "text": "Meanwhile, people who already own assets get richer, without doing anything differently." },
+
+    { "id": "e1", "scene": "end", "pause": 0.45, "text": "Inflation isn't just prices going up. It's a transfer." },
+    { "id": "e2", "scene": "end", "pause": 0.3, "text": "So next time you hear that new money is being created, don't just ask how much." },
+    { "id": "e3", "scene": "end", "pause": 0.0, "text": "Ask: who gets it first?" }
+  ]
+}

@@ -15,7 +15,7 @@ async function open() {
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
   page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') console.error('[page]', m.text()); });
   page.on('pageerror', e => console.error('[pageerror]', e.message));
-  await page.goto('file://' + path.join(ROOT, 'index.html') + '?render');
+  await page.goto('file://' + path.join(ROOT, process.env.PAGE || 'index.html') + '?render');
   await page.waitForFunction(() => window.ready === true, null, { timeout: 20000 });
   return { browser, page };
 }

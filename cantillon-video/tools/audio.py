@@ -1,6 +1,6 @@
 """Build the soundtrack: narration + procedural music bed + synthesized sound effects.
 
-Usage: python3 audio.py <build_dir>
+Usage: python3 audio.py <build_dir> [script.json]
 Reads  <build_dir>/voice.wav, timeline.json, sfx.json
 Writes <build_dir>/mix.wav (48 kHz stereo)
 Everything is synthesized from scratch with numpy (no samples), seeded for
@@ -371,7 +371,7 @@ def s_machine(dur):
         k += beat
         j += 1
     t = np.arange(len(out)) / SR
-    whirr = bp(noise(len(out) / SR), 400, 900) * 0.08
+    whirr = bp(rng.standard_normal(len(out)), 400, 900) * 0.08
     out += whirr
     fade = np.clip(np.minimum(t / 0.5, (dur - t) / 0.6), 0, 1)
     return norm(out * fade, 0.2)
@@ -430,20 +430,33 @@ cue = {c["id"]: c for c in tl["cues"]}
 first = {}
 for c in tl["cues"]:
     first.setdefault(c["scene"], c["start"])
-title_hit = cue["h7"]["start"]
-end_title = cue["e2"]["end"] + 1.4
+# which narration lines drive the music: build-up, title hit, final title card
+music = {"build": "h6", "title": "h7", "end": "e2"}
+if len(sys.argv) > 2:
+    music.update(json.load(open(sys.argv[2])).get("music", {}))
+title_hit = cue[music["title"]]["start"]
+end_title = cue[music["end"]]["end"] + 1.4
 
+# per-scene presets: (progression, pad, pluck, bass, kick, hat, tick, bright, lead-in)
+PRESETS = {
+    "ripple": (["G", "D", "Em", "D"], 0.75, 0.35, 0.3, 0.0, 0.0, 0.0, 0.3, 0.8),
+    "town": (["D", "A", "Bm", "G"], 0.4, 0.85, 0.6, 0.45, 0.4, 0.0, 0.5, 0.5),
+    "modern": (["Bm", "G", "D", "A"], 0.5, 0.75, 0.7, 0.65, 0.5, 0.0, 0.3, 0.5),
+    "you": (["G", "D", "A", "Bm"], 0.6, 0.6, 0.5, 0.35, 0.3, 0.0, 0.3, 0.5),
+    "matters": (["Bm", "G", "D", "A"], 0.8, 0.4, 0.5, 0.15, 0.1, 0.0, 0.2, 0.5),
+    "end": (["Bm", "G", "D", "A"], 0.7, 0.85, 0.7, 0.7, 0.6, 0.0, 0.4, 0.5),
+}
 # sections: (start, progression, pad, pluck, bass, kick, hat, tick, bright)
 SECTIONS = [
     (0.0, ["Bm", "G", "Em", "F#"], 0.55, 0.45, 0.35, 0.0, 0.0, 0.6, 0.0),
-    (cue["h6"]["start"], ["Bm", "G", "Em", "F#"], 0.65, 0.6, 0.5, 0.45, 0.2, 0.6, 0.0),
+    (cue[music["build"]]["start"], ["Bm", "G", "Em", "F#"], 0.65, 0.6, 0.5, 0.45, 0.2, 0.6, 0.0),
     (title_hit, ["D", "A", "Bm", "G"], 0.5, 0.75, 0.45, 0.0, 0.2, 0.0, 1.0),
-    (first["ripple"] - 0.8, ["G", "D", "Em", "D"], 0.75, 0.35, 0.3, 0.0, 0.0, 0.0, 0.3),
-    (first["town"] - 0.5, ["D", "A", "Bm", "G"], 0.4, 0.85, 0.6, 0.45, 0.4, 0.0, 0.5),
-    (first["modern"] - 0.5, ["Bm", "G", "D", "A"], 0.5, 0.75, 0.7, 0.65, 0.5, 0.0, 0.3),
-    (first["you"] - 0.5, ["G", "D", "A", "Bm"], 0.6, 0.6, 0.5, 0.35, 0.3, 0.0, 0.3),
-    (first["matters"] - 0.5, ["Bm", "G", "D", "A"], 0.8, 0.4, 0.5, 0.15, 0.1, 0.0, 0.2),
-    (first["end"] - 0.5, ["Bm", "G", "D", "A"], 0.7, 0.85, 0.7, 0.7, 0.6, 0.0, 0.4),
+]
+for name, pr in PRESETS.items():
+    if name in first:
+        SECTIONS.append((first[name] - pr[8],) + pr[:8])
+SECTIONS.sort(key=lambda x: x[0])
+SECTIONS += [
     (end_title, ["D"], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
 ]
 

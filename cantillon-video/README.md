@@ -1,10 +1,15 @@
 # The Cantillon Effect: animated explainer
 
-A roughly 3½-minute, 2D animated explainer about the Cantillon effect: why *who gets new money first* matters, and how it affects ordinary people.
+By Kane Gulka ft. Opus 5.5.
 
-- **Watch:** `the-cantillon-effect.mp4` (1080p, 30 fps, AAC stereo, with an optional English caption track)
-- **Captions:** `the-cantillon-effect.srt`
-- **Interactive preview:** open `index.html` in a browser to scrub through the animation frame by frame.
+A 2D animated explainer about the Cantillon effect: why *who gets new money first* matters, and how it affects ordinary people. It comes in two cuts:
+
+| Cut | File | Format | Length |
+|-----|------|--------|--------|
+| Full | `the-cantillon-effect.mp4` | 16:9, 1920×1080 | 3:41 |
+| Vertical short (Shorts, Reels, TikTok) | `the-cantillon-effect-vertical.mp4` | 9:16, 1080×1920 | 1:34 |
+
+Both files are 30 fps with AAC stereo at −16 LUFS and an optional English caption track. The captions are also provided as `.srt` files. To scrub through either animation frame by frame, open `index.html` (full cut) or `short.html` (vertical cut) in a browser.
 
 ## Style
 
@@ -20,6 +25,14 @@ Flat 2D vector illustration with continuous "vector merge" transitions and no ha
 | 6 | **What it means for you:** paycheck, the leaky savings jar, the down escalator, the runaway house, the gap | The end of the wages line becomes "you". The jar morphs into the escalator, and the escalator into the ground |
 | 7 | **Why it matters:** not a conspiracy; inflation is a transfer; three better questions | The screen dives into "the gap" |
 | 8 | **Ending:** "Don't just ask how much. Ask who gets it first." | The question cards reassemble into the opening machine, and everything merges into the title coin |
+
+## The vertical cut
+
+The vertical cut is a tighter script (`script_short.json`) re-composed for a phone screen, not a crop of the full version. Its scenes are in `src/short.js`:
+
+- The line of people becomes a hillside staircase of houses that the new money cascades down.
+- The money pipeline flows from top to bottom.
+- Key content stays inside the area that app overlays don't cover (roughly y 180–1560).
 
 ## How it's made
 
@@ -50,6 +63,19 @@ tools/mux.sh build/video_silent.mp4 build/mix.wav build/captions.srt the-cantill
 ```
 
 To check a single frame, run `node tools/render.js stills <dir> 12.5,40,95`.
+
+To build the vertical cut, use the same steps with the vertical script and page:
+
+```bash
+mkdir -p build_short
+python3 tools/tts.py   script_short.json $MODELS/kokoro-v1.0.onnx $MODELS/voices-v1.0.bin build_short
+python3 tools/words.py build_short/timeline.json $MODELS/kokoro-v1.0.onnx $MODELS/voices-v1.0.bin src/timeline_short.js
+PAGE=short.html node tools/render.js sfx build_short/sfx.json
+python3 tools/audio.py build_short script_short.json
+python3 tools/make_srt.py build_short/timeline.json the-cantillon-effect-vertical.srt
+BUILD=build_short PAGE=short.html tools/render_all.sh build_short/video_silent.mp4 4
+tools/mux.sh build_short/video_silent.mp4 build_short/mix.wav the-cantillon-effect-vertical.srt the-cantillon-effect-vertical.mp4
+```
 
 The fonts in `fonts/` (Fraunces, Inter and Caveat) are licensed under the SIL Open Font License.
 
