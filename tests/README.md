@@ -18,7 +18,15 @@ matrix of goal × experience × days/week × starting volume:
 - pace math (monotonic in VDOT, zone ordering, recovery offset, race pace = projected
   finish ÷ distance), heart-rate math (Karvonen + %-max fallback + overrides), and
   storage migrations v1→current
-- `replanFrom` keeps week numbers contiguous and preserves past weeks + logs
+- `replanFrom` keeps week numbers contiguous and preserves past weeks + logs, and
+  continues load, long-run progression and deload rhythm across a mid-plan change
+- training-engine v2 programming invariants: no key session the day before the long
+  run, key sessions ≥2 days apart, progressive session structures, Daniels volume
+  caps, hills in base, race-week sharpener, no deload right before the taper, week-2
+  time trial when no race time is on file, marathon peak long run
+- fitness evidence: whole-session averages ignored, on-target main sets leave
+  fitness unchanged, a fast race lifts today and race day equally
+- storage v7→v8 upgrade and service-worker precache completeness
 
 `NOTE` lines are non-failing observations (judgment calls / ultra tuning we watch).
 
@@ -31,7 +39,9 @@ Exit code is non-zero if any hard invariant fails.
 ## `e2e.mjs` — browser / PWA checks (needs a server + Playwright)
 
 Drives the real app in Chromium: onboarding, tab rendering, log persistence, HR/pace
-surfacing, the mid-plan replan week-numbering regression, and PWA manifest/icons/
+surfacing, the mid-plan replan week-numbering regression, coaching UX (week strip,
+intensity profile, main-set pace logging + feedback, unplanned runs in Week, Plan →
+Week navigation, Escape-to-close, .ics export, fitness chart), and PWA manifest/icons/
 service-worker/offline.
 
 ```
