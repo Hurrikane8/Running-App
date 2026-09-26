@@ -8,10 +8,10 @@ import { fmtDist, fmtPace, fmtPaceDisplay, fmtPaceRangeDisplay, fmtTime, esc, km
 export const TYPE_LABEL = {
   easy: 'Easy', recovery: 'Recovery', long: 'Long run', tempo: 'Threshold',
   intervals: 'VO2max', reps: 'Speed', mpace: 'Goal pace', strides: 'Strides',
-  hills: 'Hills', xtrain: 'Cross-train', race: 'Race',
+  hills: 'Hills', xtrain: 'Cross-train', race: 'Race', tt: 'Time trial',
 };
 
-export const QUALITY_TYPES = new Set(['tempo', 'intervals', 'reps', 'mpace', 'hills', 'race']);
+export const QUALITY_TYPES = new Set(['tempo', 'intervals', 'reps', 'mpace', 'hills', 'race', 'tt']);
 
 export function chipFor(w) {
   if (w.status === 'done') return '<span class="chip done">✓ Done</span>';
@@ -28,13 +28,14 @@ export function typeChip(type) {
 // Rendered as the run-type guide on the Plan tab.
 export const TYPE_INFO = [
   { type: 'easy', what: 'Relaxed running that builds your aerobic base: heart, capillaries, mitochondria, tendons.', how: 'Conversational the whole way (RPE 3-4). Most of your week should feel this comfortable. That is the 80/20 rule at work.' },
-  { type: 'long', what: 'The longest run of the week. Builds endurance, fuel economy and mental durability.', how: 'Easy effort, start slower than feels natural. On marathon/half plans the final stretch sometimes tightens to goal pace.' },
-  { type: 'tempo', what: 'Threshold running, the pace you could hold for about an hour flat-out. Raises the speed you can sustain without blowing up.', how: 'Comfortably hard (RPE 6-7): you could speak a sentence, not a paragraph.' },
-  { type: 'intervals', what: 'VO2max repeats: 3-5 minute efforts that push your engine\'s ceiling.', how: 'Hard but controlled (RPE 8-9), even pacing across reps, jog recoveries. The last rep should feel like one more was possible.' },
-  { type: 'reps', what: 'Short, fast repetitions for speed and running economy, not fitness.', how: 'Quick and relaxed (RPE 8), never straining. Full recovery between reps is part of the workout.' },
-  { type: 'mpace', what: 'Goal-pace running that grooves the exact rhythm you will race at.', how: 'Locked to your goal pace (RPE 5-6). It should feel almost automatic by race week.' },
-  { type: 'hills', what: 'Uphill efforts building leg strength and power with less impact than flat speed work.', how: 'Strong uphill effort (RPE 7-8), tall posture, easy jog or walk back down.' },
-  { type: 'strides', what: 'An easy run finished with a few 20-30 s smooth accelerations to keep the legs sharp.', how: 'Easy pace throughout; strides build up, float, ease off. Never a sprint.' },
+  { type: 'long', what: 'The longest run of the week. Builds endurance, fuel economy and mental durability.', how: 'Easy effort, start slower than feels natural. On marathon/half plans every other long run finishes with a stretch at goal pace.' },
+  { type: 'tempo', what: 'Threshold running, the pace you could hold for about an hour flat-out. Cruise intervals and continuous tempos raise the speed you can sustain without blowing up.', how: 'Comfortably hard (RPE 6-7): you could speak a sentence, not a paragraph.' },
+  { type: 'intervals', what: 'VO2max repeats: 2-5 minute efforts that push your engine\'s ceiling. They grow from 800 m reps toward 1200 m as the plan builds.', how: 'Hard but controlled (RPE 8-9), even pacing across reps, jog recoveries. The last rep should feel like one more was possible.' },
+  { type: 'reps', what: 'Short, fast repetitions (200-400 m) for speed and running economy, not fitness.', how: 'Quick and relaxed (RPE 8), never straining. Full recovery between reps is part of the workout.' },
+  { type: 'mpace', what: 'Race-specific work at your goal pace: the projected race-day pace, so you rehearse the exact rhythm you will race at.', how: 'Locked to goal pace, no faster. Effort depends on the distance: RPE 8 at 5K pace, 5-6 at marathon pace.' },
+  { type: 'hills', what: 'Uphill repeats building leg strength and power with less impact than flat speed work. The base phase\'s key session.', how: 'Strong uphill effort (RPE 7-8), tall posture, easy jog or walk back down. Run by effort, not pace.' },
+  { type: 'tt', what: 'A solo time trial that measures your current fitness. Your result recalibrates every pace in the plan.', how: 'Race effort (RPE 9): controlled first third, hold the middle, empty the tank at the end. Log just the time-trial distance and time.' },
+  { type: 'strides', what: 'An easy run finished with a few 20-30 s smooth accelerations (or 10 s hill sprints) to keep the legs sharp.', how: 'Easy pace throughout; strides build up, float, ease off. Never a sprint.' },
   { type: 'recovery', what: 'A deliberately short, gentle run that promotes blood flow after hard or long days.', how: 'Slower than feels necessary (RPE 2-3). Walking breaks are fine.' },
   { type: 'xtrain', what: 'Optional low-impact aerobic work (bike, swim, elliptical, incline walk) that keeps the engine on with less pounding.', how: 'Easy-to-steady effort (RPE 3-5), roughly the listed duration.' },
   { type: 'race', what: 'The day it all pays off.', how: 'Even or slightly negative splits. Trust the taper, execute your fueling plan.' },

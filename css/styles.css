@@ -151,6 +151,7 @@
   --wt-strides: #0f7a56;
   --wt-race: #86135c;
   --wt-xtrain: #82817b;
+  --wt-tt: var(--wt-race);
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -339,6 +340,7 @@ h1.screen-title {
 .chip.chip-hills     { color: var(--wt-hills);     background: color-mix(in srgb, var(--wt-hills) 13%, var(--surface)); }
 .chip.chip-strides   { color: var(--wt-strides);   background: color-mix(in srgb, var(--wt-strides) 13%, var(--surface)); }
 .chip.chip-race      { color: var(--wt-race);      background: color-mix(in srgb, var(--wt-race) 15%, var(--surface)); }
+.chip.chip-tt        { color: var(--wt-race);      background: color-mix(in srgb, var(--wt-race) 15%, var(--surface)); }
 .chip.chip-xtrain    { color: var(--wt-xtrain);    background: color-mix(in srgb, var(--wt-xtrain) 13%, var(--surface)); }
 .chip.done { background: var(--good-soft); color: var(--good); }
 

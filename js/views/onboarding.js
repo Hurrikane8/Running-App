@@ -1,7 +1,7 @@
 // Multi-step onboarding interview → profile → generated plan.
 
 import { loadState, saveState } from '../storage.js';
-import { GOALS, generatePlan, planWeeksFor, planRecommendation } from '../plangen.js';
+import { GOALS, generatePlan, planWeeksFor, planRecommendation, defaultRunDays } from '../plangen.js';
 import { vdotFromRace, DEFAULT_VDOT } from '../paces.js';
 import { esc, unitToKm, todayStr, addDays, mondayOf } from '../util.js';
 
@@ -312,6 +312,9 @@ function buildProfile() {
     raceDate: draft.goal === 'fitness' ? null : draft.raceDate,
     experience: draft.experience,
     daysPerWeek: draft.daysPerWeek,
+    runDays: draft.runDays && draft.runDays.length === draft.daysPerWeek
+      ? draft.runDays.slice() : defaultRunDays(draft.daysPerWeek, draft.longRunDay ?? 5),
+    longRunDay: draft.longRunDay ?? 5,
     weeklyKm,
     refRace,
     injuries: draft.injuries.slice(),

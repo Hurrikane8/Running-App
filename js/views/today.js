@@ -75,7 +75,7 @@ export function renderToday(container, refresh) {
       <div class="today-target">${targetLine(w, profile, settings, evidence)}</div>
       <div class="structure">${structureRows(w, profile, settings, evidence)}</div>
       ${w.tip ? `<div class="tip">${esc(w.tip)}</div>` : ''}
-      ${profile.injuries.length && ['tempo', 'intervals', 'reps', 'hills'].includes(w.type)
+      ${profile.injuries.length && ['tempo', 'intervals', 'reps', 'hills', 'mpace', 'tt'].includes(w.type)
         ? '<div class="tip">Niggle-aware: if anything hurts beyond a 3/10, swap this for the same duration at easy effort on a bike or elliptical.</div>' : ''}
       ${w.status === 'planned'
         ? '<div class="btn-row"><button class="btn primary" data-log="' + w.id + '">Log this workout</button></div>'

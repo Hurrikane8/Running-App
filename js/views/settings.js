@@ -2,7 +2,7 @@
 // current week), plan overview, backup/restore, reset.
 
 import { loadState, saveState, resetState, exportState, importState } from '../storage.js';
-import { GOALS, replanFrom, pacesForProfile, vdotBreakdown } from '../plangen.js';
+import { GOALS, replanFrom, pacesForProfile, vdotBreakdown, defaultRunDays } from '../plangen.js';
 import { vdotFromRace } from '../paces.js';
 import { estimateMaxHR, resolveMaxHR, targetHR } from '../hr.js';
 import { todayStr, addDays, esc, fmtPaceDisplay, fmtPaceRangeDisplay, kmToUnit, unitToKm } from '../util.js';
@@ -216,7 +216,9 @@ function openGoalModal(refresh) {
     if (goal !== profile.goal) profile.goalTimeSec = null; // stale for a new distance
     profile.goal = goal;
     profile.raceDate = raceDate;
-    profile.daysPerWeek = parseInt(el.querySelector('#gm-days').value, 10);
+    const nDays = parseInt(el.querySelector('#gm-days').value, 10);
+    if (nDays !== profile.daysPerWeek) profile.runDays = defaultRunDays(nDays, profile.longRunDay ?? 5);
+    profile.daysPerWeek = nDays;
     profile.experience = el.querySelector('#gm-exp').value;
     state.plan = replanFrom(state.plan, profile, todayStr());
     saveState();

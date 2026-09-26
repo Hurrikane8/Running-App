@@ -10,8 +10,9 @@
 import {
   GOALS, generatePlan, replanFrom, estimateRaceTime, pacesForDate,
   projectedRaceTime, racePaceForDate, reshuffleWeek, missedWorkouts,
-  vdotBreakdown, vdotForDate, workPaceKey,
+  vdotBreakdown, vdotForDate, workPaceKey, pickKeyDays, defaultRunDays,
 } from '../js/plangen.js';
+import { readFileSync, readdirSync } from 'node:fs';
 import { trainingPaces, vdotFromRace, predictRace } from '../js/paces.js';
 import { estimateMaxHR, resolveMaxHR, targetHR, HR_ZONE_FRACTIONS } from '../js/hr.js';
 import { STATE_VERSION, importState } from '../js/storage.js';
@@ -132,7 +133,9 @@ for (const goal of ALL_GOALS) {
             const km = w.workouts.reduce((s, x) => s + workoutKm(x), 0);
             if (lastFullKm != null) {
               const jump = km - lastFullKm;
-              const slack = Math.max(lastFullKm * 0.11, 3.0);
+              // 2-run-day weeks are just long run + one session: a new session
+              // format is an inherent step of a few km
+              const slack = Math.max(lastFullKm * 0.11, daysPerWeek <= 2 ? 4.0 : 3.0);
               if (jump > slack + 0.01) {
                 const rec = { combo: `${goal}/${experience}/${daysPerWeek}d/${weeklyKm}`, wk: w.idx + 1, from: Math.round(lastFullKm), to: Math.round(km), pct: ((jump / lastFullKm) * 100).toFixed(0) };
                 (ultra ? growthViolationsUltra : growthViolationsRoad).push(rec);
@@ -348,7 +351,7 @@ console.log('\n=== fitness evidence ===');
 
   // (a) whole-session logs only (warm-up + jogs included) → no evidence at all
   const planA = fresh();
-  for (const x of past(planA)) {
+  for (const x of past(planA).filter((w) => w.type !== 'tt' && w.type !== 'race')) {
     const p = trainingPaces(42);
     x.status = 'done';
     x.log = { distKm: x.distKm || 5, durSec: Math.round((x.distKm || 5) * (p.easy[0] + p.easy[1]) / 2), rpe: 6 };
@@ -401,6 +404,153 @@ console.log('\n=== fitness evidence ===');
   // evidence before the fitness anchor is superseded
   const old = [{ ...extra[0], date: addDays(created, -10) }];
   check('Evidence before vdotDate is ignored', vdotBreakdown(profile, today, null, old).nPoints === 0);
+}
+
+// ---------------------------------------------------------------------------
+// 9. Training engine v2 — programming invariants across the sweep
+// ---------------------------------------------------------------------------
+console.log('\n=== training engine v2 ===');
+{
+  const KEY = new Set(['tempo', 'intervals', 'reps', 'mpace', 'hills', 'tt']);
+  const cycd = (a, b) => Math.min(((b - a) % 7 + 7) % 7, ((a - b) % 7 + 7) % 7);
+  let dayBeforeLong = 0, keyAdjacent = 0, deloadBeforeTaper = 0, noSharpener = 0, noHills = 0,
+    stale = 0, capFail = 0, noTT = 0, mpLongFail = 0, plansChecked = 0;
+  const capNotes = [];
+  for (const goal of ROAD_GOALS) {
+    for (const experience of EXPERIENCES) {
+      for (const daysPerWeek of DAYS) {
+        for (const weeklyKm of START_VOL) {
+          const profile = makeProfile(goal, experience, daysPerWeek, weeklyKm, 14);
+          const plan = generatePlan(profile);
+          plansChecked++;
+          const pre = plan.weeks.filter((w) => w.phase !== 'taper');
+          const taper = plan.weeks.filter((w) => w.phase === 'taper');
+          if (taper.length && pre.length && pre[pre.length - 1].deload) deloadBeforeTaper++;
+          for (const w of plan.weeks) {
+            const long = w.workouts.find((x) => x.type === 'long');
+            const keys = w.workouts.filter((x) => KEY.has(x.type));
+            const dow = (x) => dayIndex(x.date);
+            if (long && daysPerWeek >= 4 && keys.some((k) => (dow(long) - dow(k) + 7) % 7 === 1)) dayBeforeLong++;
+            if (daysPerWeek >= 5) {
+              for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++) {
+                if (cycd(dow(keys[i]), dow(keys[j])) < 2) keyAdjacent++;
+              }
+            }
+            // Daniels-style volume caps on the main set (with rounding slack)
+            for (const k of keys) {
+              if (!k.work?.km || daysPerWeek <= 2) continue; // 2-day weeks: session floors dominate
+              const lim = { threshold: Math.max(0.15 * w.targetKm, 4.1), interval: Math.max(0.12 * w.targetKm, 3.3), rep: Math.max(0.08 * w.targetKm, 2.5) }[k.work.paceKey];
+              if (lim && k.work.km > lim + 0.01) { capFail++; if (capNotes.length < 3) capNotes.push(`${goal}/${experience}/${daysPerWeek}d/${weeklyKm} wk${w.idx + 1} ${k.title} ${k.work.km}km of ${w.targetKm}`); }
+            }
+          }
+          // hills in base (road plans with a base of 3+ weeks and a key slot)
+          const base = plan.weeks.filter((w) => w.phase === 'base');
+          if (base.length >= 3 && !base.some((w) => w.workouts.some((x) => x.type === 'hills'))) noHills++;
+          // variety: threshold sessions don't all share one structure
+          const tempos = plan.weeks.flatMap((w) => w.workouts).filter((x) => x.type === 'tempo').map((x) => x.structure.main);
+          if (tempos.length >= 3 && new Set(tempos).size < 2) stale++;
+          if (goal !== 'fitness') {
+            const rw = plan.weeks[plan.weeks.length - 1];
+            const race = rw.workouts.find((x) => x.type === 'race');
+            const r = dayIndex(race.date);
+            const runDays = defaultRunDays(daysPerWeek, 5);
+            const canSharpen = [r - 3, r - 4, r - 5].some((d) => runDays.includes(d));
+            if (canSharpen && !rw.workouts.some((x) => x.title === 'Race-week sharpener')) noSharpener++;
+          }
+          if (weeklyKm >= 10 && !plan.weeks[1]?.workouts.some((x) => x.type === 'tt')) noTT++;
+          if (goal === 'marathon' && experience !== 'beginner' && weeklyKm >= 40 && daysPerWeek >= 4) {
+            const maxLong = Math.max(...plan.weeks.flatMap((w) => w.workouts).filter((x) => x.type === 'long').map((x) => x.distKm));
+            if (maxLong < 28) { mpLongFail++; note('marathon peak long run', `${experience}/${daysPerWeek}d/${weeklyKm}: ${maxLong} km`); }
+          }
+        }
+      }
+    }
+  }
+  console.log(`(${plansChecked} road plans checked)`);
+  check('No key session the day before the long run (≥4 run days)', dayBeforeLong === 0, `${dayBeforeLong} weeks`);
+  check('Key sessions at least 2 days apart (≥5 run days)', keyAdjacent === 0, `${keyAdjacent} pairs`);
+  check('No deload in the week right before the taper', deloadBeforeTaper === 0, `${deloadBeforeTaper} plans`);
+  check('Race week has a goal-pace sharpener', noSharpener === 0, `${noSharpener} plans`);
+  check('Hill work appears in base', noHills === 0, `${noHills} plans`);
+  check('Threshold sessions progress (not one repeated structure)', stale === 0, `${stale} plans`);
+  check('Main-set volume within Daniels caps', capFail === 0, capNotes.join(' | '));
+  check('No race time on file → time trial in week 2', noTT === 0, `${noTT} plans`);
+  check('Marathon peak long run ≥ 28 km (intermediate+, 40+ km/wk)', mpLongFail === 0, `${mpLongFail} plans`);
+
+  // default schedules: Tue/Thu key days around a Saturday long run
+  check('5-day default: key days Tue+Thu', JSON.stringify(pickKeyDays(defaultRunDays(5, 5), 5, 2)) === '[1,3]',
+    JSON.stringify(pickKeyDays(defaultRunDays(5, 5), 5, 2)));
+  check('7-day default: key days Tue+Thu', JSON.stringify(pickKeyDays(defaultRunDays(7, 5), 5, 2)) === '[1,3]');
+  check('Sunday long run: key days avoid Sat/Mon', pickKeyDays(defaultRunDays(6, 6), 6, 2).every((d) => d !== 5 && d !== 0));
+}
+
+// ---------------------------------------------------------------------------
+// 10. replanFrom v2 — continuity across a mid-plan change
+// ---------------------------------------------------------------------------
+console.log('\n=== replan continuity ===');
+{
+  const created = addDays(mondayOf(todayStr()), -42); // 6 weeks in
+  const profile = makeProfile('half', 'intermediate', 5, 40, 8);
+  profile.vdotDate = created;
+  const plan = generatePlan(profile, created);
+  const curMonday = mondayOf(todayStr());
+  const idxCur = plan.weeks.findIndex((w) => w.start === curMonday);
+  const prevFull = plan.weeks.slice(0, idxCur).filter((w) => !w.deload).pop();
+  const re = replanFrom(plan, { ...profile, daysPerWeek: 6, runDays: null }, todayStr());
+  // first full (not partially-elapsed, non-deload) regenerated week
+  const firstFull = re.weeks.find((w) => w.start > curMonday && !w.deload && w.phase !== 'taper');
+  check('Replan keeps the training load (no drop to onboarding volume)',
+    firstFull && firstFull.targetKm >= prevFull.targetKm * 0.85, `${prevFull.targetKm} → ${firstFull?.targetKm}`);
+  const longOf = (w) => w?.workouts.find((x) => x.type === 'long')?.distKm || 0;
+  check('Replan keeps long-run progression', longOf(firstFull) >= longOf(prevFull) * 0.9, `${longOf(prevFull)} → ${longOf(firstFull)}`);
+  let run = 0, maxRun = 0;
+  for (const w of re.weeks) { if (w.deload || w.phase === 'taper') run = 0; else maxRun = Math.max(maxRun, ++run); }
+  check('Replan keeps the deload rhythm (≤4 load weeks in a row)', maxRun <= 4, `${maxRun}`);
+  check('Replan keeps week numbering contiguous', re.weeks.every((w, i) => w.idx === i));
+
+  // a week with a logged key session is left intact
+  const plan2 = generatePlan(profile, created);
+  const cur2 = plan2.weeks.find((w) => w.start === curMonday);
+  const q = cur2.workouts.find((x) => ['tempo', 'intervals', 'hills', 'mpace', 'tt'].includes(x.type)) || cur2.workouts[0];
+  q.status = 'done'; q.log = { distKm: q.distKm || 5, durSec: 1800, rpe: 7 };
+  const before = JSON.stringify(cur2.workouts.map((x) => [x.date, x.type, x.distKm]));
+  const re2 = replanFrom(plan2, { ...profile, daysPerWeek: 4, runDays: null }, todayStr());
+  const after = JSON.stringify(re2.weeks.find((w) => w.start === curMonday).workouts.map((x) => [x.date, x.type, x.distKm]));
+  check('Week with logged sessions is kept as-is (change applies next Monday)', before === after);
+  check('Next week follows the new schedule', re2.weeks.find((w) => w.start === addDays(curMonday, 7))?.workouts.filter((x) => x.type !== 'xtrain').length <= 4);
+}
+
+// ---------------------------------------------------------------------------
+// 11. Storage v7 → v8 upgrade & service-worker shell
+// ---------------------------------------------------------------------------
+console.log('\n=== v8 upgrade & SW shell ===');
+{
+  const created = addDays(mondayOf(todayStr()), -21);
+  const profile = makeProfile('5k', 'intermediate', 7, 40, 8);
+  profile.vdotDate = created;
+  delete profile.runDays; delete profile.longRunDay;
+  const plan = generatePlan(profile, created);
+  const pastLogged = plan.weeks[0].workouts[0];
+  pastLogged.status = 'done'; pastLogged.log = { distKm: 5, durSec: 1500, rpe: 3 };
+  const cur = plan.weeks.find((w) => w.start === mondayOf(todayStr()));
+  const curSig = JSON.stringify(cur.workouts.map((x) => x.id));
+  const v7 = { version: 7, settings: { units: 'km', paceDisplay: 'outdoor' }, profile, plan, extraLogs: [], ui: {} };
+  const m = importState(JSON.stringify(v7));
+  check('v8: profile gains runDays + longRunDay', Array.isArray(m.profile.runDays) && m.profile.runDays.length === 7 && m.profile.longRunDay === 5);
+  check('v8: past logs preserved', m.plan.weeks[0].workouts.some((x) => x.status === 'done' && x.log?.durSec === 1500));
+  check('v8: current week untouched', JSON.stringify(m.plan.weeks.find((w) => w.start === mondayOf(todayStr())).workouts.map((x) => x.id)) === curSig);
+  check('v8: future weeks regenerated with structured sessions',
+    m.plan.weeks.filter((w) => w.start > mondayOf(todayStr())).flatMap((w) => w.workouts).some((x) => x.segments));
+  check('v8: upgrade notice flagged', m.ui.planUpgraded === true);
+  check('v8: week idx contiguous', m.plan.weeks.every((w, i) => w.idx === i));
+
+  const sw = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+  const jsFiles = [
+    ...readdirSync(new URL('../js/', import.meta.url)).filter((f) => f.endsWith('.js')).map((f) => `./js/${f}`),
+    ...readdirSync(new URL('../js/views/', import.meta.url)).filter((f) => f.endsWith('.js')).map((f) => `./js/views/${f}`),
+  ];
+  const missing = jsFiles.filter((f) => !sw.includes(`'${f}'`));
+  check('Service worker precaches every JS module', missing.length === 0, missing.join(', '));
 }
 
 // ---------------------------------------------------------------------------

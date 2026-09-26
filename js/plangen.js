@@ -37,11 +37,75 @@ const ULTRA_LONG_MIN = {
   '100k': [240, 280, 320, 350], '100mi': [270, 320, 360, 390],
 };
 
-// Training-day templates by daysPerWeek (Mon=0..Sun=6); Saturday long run.
-const DAY_TEMPLATES = {
-  2: [2, 5], 3: [1, 3, 5], 4: [1, 3, 5, 6], 5: [1, 2, 4, 5, 6],
-  6: [0, 1, 2, 4, 5, 6], 7: [0, 1, 2, 3, 4, 5, 6],
+// ---- weekly scheduling ----
+//
+// Run days are placed around the long-run day L (Saturday by default,
+// Sunday optional). Defaults, as offsets from L:
+//   2: Wed Sat · 3: Tue Thu Sat · 4: Tue Thu Sat Sun · 5: Tue Wed Thu Sat Sun
+//   6: Tue–Sun (Monday off) · 7: every day
+// The day after the long run is a recovery run; the key sessions go on the
+// days that keep them furthest from each other and from the long run
+// (pickKeyDays) — Tue/Thu for a Saturday long run, never Friday-into-Saturday.
+const DEFAULT_OFFSETS = {
+  1: [0], 2: [-3, 0], 3: [-4, -2, 0], 4: [-4, -2, 0, 1], 5: [-4, -3, -2, 0, 1],
+  6: [-4, -3, -2, -1, 0, 1], 7: [-5, -4, -3, -2, -1, 0, 1],
 };
+
+export function defaultRunDays(daysPerWeek, longRunDay = 5) {
+  const offs = DEFAULT_OFFSETS[clamp(daysPerWeek || 4, 1, 7)];
+  return [...new Set(offs.map((o) => (((longRunDay + o) % 7) + 7) % 7))].sort((a, b) => a - b);
+}
+
+export function longDayOf(profile) {
+  return profile.longRunDay === 6 ? 6 : 5;
+}
+
+// The profile's run days (Mon=0..Sun=6), always consistent with daysPerWeek.
+export function runDaysOf(profile) {
+  const d = Array.isArray(profile.runDays) && profile.runDays.length === profile.daysPerWeek
+    ? profile.runDays
+    : defaultRunDays(profile.daysPerWeek, longDayOf(profile));
+  return [...d].sort((a, b) => a - b);
+}
+
+// days forward from a to b around the week (0..6)
+const cyc = (a, b) => (((b - a) % 7) + 7) % 7;
+
+const lexGreater = (a, b) => {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] > b[i];
+  return false;
+};
+
+function combos(arr, n) {
+  if (n === 0) return [[]];
+  const out = [];
+  arr.forEach((x, i) => combos(arr.slice(i + 1), n - 1).forEach((c) => out.push([x, ...c])));
+  return out;
+}
+
+// Choose n key-session days from runDays. Hard days should be separated by
+// easy days: maximize the smallest gap (around the week) between any two
+// hard days including the long run, then the next-smallest, then prefer the
+// days furthest into the week after the long run (Tue/Thu before a Saturday
+// long run rather than Mon/Wed). The days directly before and after the long
+// run are avoided whenever enough other days exist.
+export function pickKeyDays(runDays, longDay, n) {
+  const cands = runDays.filter((d) => d !== longDay);
+  if (n <= 0 || !cands.length) return [];
+  const soft = cands.filter((d) => cyc(d, longDay) !== 1 && cyc(longDay, d) !== 1);
+  const pool = soft.length >= n ? soft : cands;
+  const k = Math.min(n, pool.length);
+  let best = null, bestScore = null;
+  for (const set of combos(pool, k)) {
+    const all = [...set, longDay].sort((a, b) => a - b);
+    const gaps = all.map((d, i) => (i === all.length - 1 ? all[0] + 7 - d : all[i + 1] - d)).sort((a, b) => a - b);
+    const score = [...gaps, set.reduce((s, d) => s + cyc(longDay, d), 0)];
+    if (!bestScore || lexGreater(score, bestScore)) {
+      best = set; bestScore = score;
+    }
+  }
+  return best.sort((a, b) => cyc(longDay, a) - cyc(longDay, b));
+}
 
 export function planWeeksFor(goal, raceDate) {
   const g = GOALS[goal];
@@ -72,13 +136,30 @@ function phaseFor(weekIdx, totalWeeks, taperWeeks, ultra) {
 const PEAK_DAYS_BASELINE = 5;
 const PEAK_DAY_FACTOR = 0.07;
 
+// Share of the week the long run may take. Marathon and half plans need a
+// bigger long run relative to weekly volume (standard marathon plans peak at
+// 30-32 km long runs on ~65-90 km weeks); shorter goals stay at ~35%.
+const LONG_SHARE = { marathon: 0.45, half: 0.40 };
+
+// 3:1 step-loading: every 4th week is a deload — except the week right
+// before the taper. The taper IS the recovery; a deload in front of it gave
+// two light weeks in a row and cut the peak block short.
+function deloadAt(w, totalWeeks, taperWeeks) {
+  const pre = totalWeeks - taperWeeks;
+  if (w >= pre) return false;
+  if (w % 4 !== 3) return false;
+  return !(taperWeeks > 0 && w === pre - 1);
+}
+
 // Weekly volume series: classic 3:1 step-loading. Full-load weeks grow ≤10%
-// (6–8% with injuries); every 4th week is a planned deload at ~72% of the
-// current full load. The growth chain advances only on full-load weeks, so the
-// week after a deload resumes one growth step (≤10%) above the previous
-// full-load week — the deload itself is unloading, not the progression
-// baseline. Taper multipliers at the end.
-function volumeSeries(profile, totalWeeks, taperWeeks) {
+// (6–8% with injuries); deloads sit at ~72% of the current full load. The
+// growth chain advances only on full-load weeks, so the week after a deload
+// resumes one growth step (≤10%) above the previous full-load week — the
+// deload itself is unloading, not the progression baseline. Taper
+// multipliers at the end. `fromWeek`/`startKm` re-anchor the chain at a
+// given week (mid-plan replans continue from the current training load
+// instead of restarting from the onboarding number).
+function volumeSeries(profile, totalWeeks, taperWeeks, fromWeek = 0, startKm = null) {
   const idx = EXP_IDX[profile.experience];
   const dayFactor = clamp(1 + (profile.daysPerWeek - PEAK_DAYS_BASELINE) * PEAK_DAY_FACTOR, 0.8, 1.35);
   // Weekly volume is capped two ways, whichever is lower: PEAK_KM (scaled
@@ -101,12 +182,17 @@ function volumeSeries(profile, totalWeeks, taperWeeks) {
   let lastFull = start;
   for (let w = 0; w < totalWeeks; w++) {
     const tIdx = w - (totalWeeks - taperWeeks);
+    if (w === fromWeek && startKm != null) {
+      chain = clamp(startKm, 8, peakCap);
+      lastFull = chain;
+      if (tIdx < 0) { vols.push(deloadAt(w, totalWeeks, taperWeeks) ? chain * 0.72 : chain); continue; }
+    }
     if (tIdx >= 0) {
       vols.push(lastFull * taperMult[tIdx]);
       continue;
     }
-    const isDeload = w % 4 === 3;
-    if (w > 0 && !isDeload) chain = Math.min(chain * growth, peakCap);
+    const isDeload = deloadAt(w, totalWeeks, taperWeeks);
+    if (w > 0 && w !== fromWeek && !isDeload) chain = Math.min(chain * growth, peakCap);
     lastFull = chain;
     vols.push(isDeload ? chain * 0.72 : chain);
   }
@@ -119,6 +205,12 @@ function fmtMin(min) {
   if (min < 60) return `${min} min`;
   const h = Math.floor(min / 60), m = min % 60;
   return m ? `${h} h ${m} min` : `${h} h`;
+}
+const fmtKm = (km) => `${Number.isInteger(km) ? km : km.toFixed(1)} km`;
+const fmtRep = (m) => (m >= 1000 && m % 1000 === 0 ? `${m / 1000} km` : m === 1600 ? '1.6 km' : `${m} m`);
+function fmtRec(min) {
+  const s = Math.round(min * 60);
+  return s % 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s / 60} min`;
 }
 
 const TIPS = {
@@ -136,6 +228,10 @@ const TIPS = {
     'Practice fueling: take on carbs every 30-40 minutes on runs over 90 minutes.',
     'Break the distance into thirds mentally: settle, cruise, then hold form when tired.',
   ],
+  longq: [
+    'Run the easy part truly easy so the fast finish is controlled, not a scramble.',
+    'The goal-pace segment is a dress rehearsal: pace, fueling, shoes, even breakfast.',
+  ],
   ultralong: [
     'Time on feet is the goal, not pace. Hike the hills. It is free speed later.',
     'Treat this as a fueling rehearsal: eat early, eat often, and note what sits well.',
@@ -144,6 +240,7 @@ const TIPS = {
   tempo: [
     'Threshold effort is "comfortably hard": you could speak a sentence, not a paragraph.',
     'Do not race the tempo. The last rep should feel like you could do one more.',
+    'Short jog breaks keep the quality high. Resist the urge to speed up late.',
   ],
   intervals: [
     'Run the first rep as if it were the fifth. Even pacing wins interval sessions.',
@@ -151,18 +248,32 @@ const TIPS = {
   ],
   reps: [
     'These are about speed and form, not suffering. Fast, relaxed, full recovery.',
+    'Quick feet, tall posture, loose hands. If form breaks, the rep is over.',
   ],
   mpace: [
     'Goal-pace running teaches rhythm. Lock into the pace and let it feel automatic.',
+    'Resist running these faster than goal pace. Precision is the skill you are building.',
+  ],
+  sharpener: [
+    'A short reminder for your legs, not a fitness builder. Finish feeling you could do double.',
   ],
   strides: [
     'Strides are 20-30 s of fast, relaxed running: build up, float, ease off. Not sprints.',
+  ],
+  hillsprints: [
+    'Hill sprints are short and explosive with full recovery. Power, not fatigue.',
+  ],
+  shakeout: [
+    'Just loosening the legs. Lay out your kit tonight and get to bed early.',
   ],
   xtrain: [
     'Bike, swim, elliptical or brisk uphill walk: aerobic effort without the impact.',
   ],
   race: [
     'Trust the training. Start conservatively, execute your fueling plan, and finish strong.',
+  ],
+  tt: [
+    'Run it like a race: controlled first third, hold the middle, empty the tank at the end.',
   ],
   hills: [
     'Run hills by effort, not pace. Strong up, relaxed down, tall posture throughout.',
@@ -174,14 +285,18 @@ function tip(type, weekIdx) {
   return arr[weekIdx % arr.length];
 }
 
-// One workout object. Distances km, durations minutes.
-function wk(date, type, title, distKm, durMin, structure, paceKey, theTip) {
+// One workout object. Distances km, durations minutes. `extra` carries the
+// structured fields: `work` (the main set: { paceKey, km, reps, repM|repMin })
+// used for logging/evidence/feedback, and `segments` ([{ z, km|min }]) used to
+// draw the session's intensity profile.
+function wk(date, type, title, distKm, durMin, structure, paceKey, theTip, extra = {}) {
   return {
     id: uid(), date, type, title,
     distKm: distKm != null ? roundHalf(distKm) : null,
     durMin: durMin != null ? Math.round(durMin) : null,
     structure, paceKey, tip: theTip,
     status: 'planned', log: null,
+    ...extra,
   };
 }
 
@@ -191,74 +306,207 @@ function easyRun(date, km, weekIdx, type = 'easy') {
     warmup: null,
     main: type === 'recovery' ? 'Very relaxed running at recovery pace' : 'Relaxed, conversational running at easy pace',
     cooldown: null,
-  }, type === 'recovery' ? 'recovery' : 'easy', tip(type, weekIdx));
+  }, type === 'recovery' ? 'recovery' : 'easy', tip(type, weekIdx),
+  { segments: [{ z: type === 'recovery' ? 'recovery' : 'easy', km: roundHalf(km) }] });
 }
 
-function stridesRun(date, km, weekIdx) {
-  return wk(date, 'strides', 'Easy run + strides', km, null, {
-    warmup: null,
-    main: 'Easy pace throughout',
-    cooldown: '6 × 25 s strides with full recovery, after the run',
-  }, 'easy', tip('strides', weekIdx));
-}
-
-function tempoRun(date, km, weekIdx, phase) {
-  const mainKm = Math.max(3, roundHalf(km * 0.55));
-  const tMin = phase === 'peak' ? '2 × ' : '';
-  const main = phase === 'peak'
-    ? `2 × ${roundHalf(mainKm / 2)} km at threshold pace, 3 min easy jog between`
-    : `${mainKm} km continuous at threshold pace`;
-  return wk(date, 'tempo', 'Threshold run', km, null, {
-    warmup: '2 km easy + 4 strides',
-    main,
-    cooldown: '1.5 km easy jog',
-  }, 'threshold', tip('tempo', weekIdx));
-}
-
-function intervalRun(date, km, weekIdx) {
-  const reps = clamp(Math.round(km * 0.55 / 1), 4, 6);
-  return wk(date, 'intervals', 'VO2max intervals', km, null, {
-    warmup: '2 km easy + 4 strides',
-    main: `${reps} × 3 min at interval pace, 2-3 min jog recovery`,
-    cooldown: '1.5 km easy jog',
-  }, 'interval', tip('intervals', weekIdx));
-}
-
-function repRun(date, km, weekIdx) {
-  return wk(date, 'reps', 'Speed reps', km, null, {
-    warmup: '2 km easy + 4 strides',
-    main: '8 × 200 m at repetition pace, full walk/jog recovery',
-    cooldown: '1.5 km easy jog',
-  }, 'rep', tip('reps', weekIdx));
-}
-
-function mpaceRun(date, km, weekIdx) {
-  const mainKm = Math.max(4, roundHalf(km * 0.6));
-  return wk(date, 'mpace', 'Goal-pace run', km, null, {
-    warmup: '2 km easy',
-    main: `${mainKm} km at marathon (goal) pace`,
-    cooldown: '1 km easy jog',
-  }, 'marathon', tip('mpace', weekIdx));
-}
-
-function hillsRun(date, km, weekIdx) {
-  return wk(date, 'hills', 'Hill strength', km, null, {
-    warmup: '2 km easy',
-    main: '8 × 45 s strong uphill effort, jog-down recovery',
-    cooldown: '1.5 km easy jog',
-  }, 'easy', tip('hills', weekIdx));
-}
-
-function longRun(date, km, weekIdx, goal, phase) {
-  let main = 'Steady, relaxed effort at easy pace throughout';
-  if (goal === 'marathon' && (phase === 'build' || phase === 'peak')) {
-    main = `Easy pace, with the final ${Math.max(3, Math.round(km * 0.25))} km at marathon pace`;
-  } else if (goal === 'half' && phase === 'peak') {
-    main = `Easy pace, with the final ${Math.max(2, Math.round(km * 0.2))} km at goal pace`;
+// Easy run with a neuromuscular add-on: strides (default) or hill sprints.
+function stridesRun(date, km, weekIdx, variant = 'strides', count = 6) {
+  const hill = variant === 'hills';
+  const shake = variant === 'shakeout';
+  const title = hill ? 'Easy run + hill sprints' : shake ? 'Shakeout + strides' : 'Easy run + strides';
+  const add = hill
+    ? `${count} × 10 s steep hill sprints, walk back down to recover`
+    : `${count} × 20 s strides with full recovery, after the run`;
+  const segs = [{ z: 'easy', km: roundHalf(km) }];
+  for (let i = 0; i < count; i++) {
+    segs.push({ z: hill ? 'hill' : 'stride', min: hill ? 10 / 60 : 20 / 60 });
+    if (i < count - 1) segs.push({ z: 'jog', min: hill ? 1.2 : 1 });
   }
-  return wk(date, 'long', 'Long run', km, null, {
-    warmup: null, main, cooldown: null,
-  }, 'easy', tip('long', weekIdx));
+  return wk(date, 'strides', title, km, null, {
+    warmup: null,
+    main: shake ? '15-20 min very relaxed at easy pace' : 'Easy pace throughout',
+    cooldown: add,
+  }, 'easy', tip(hill ? 'hillsprints' : shake ? 'shakeout' : 'strides', weekIdx), { segments: segs });
+}
+
+// Structured quality session: warm-up, a main set of reps (distance- or
+// time-based) or one continuous block, cool-down. Total distance counts the
+// recovery jogs at easy pace so weekly volume stays honest.
+function qualitySession(date, ctx, s) {
+  const { p, beginner } = ctx;
+  const light = beginner || ctx.vol < 25;
+  const wu = s.wu ?? (light ? 1.5 : 2);
+  const cd = s.cd ?? (light ? 1 : 1.5);
+  const workPace = s.pace; // sec/km of the main set (for sizing only)
+  const segs = [{ z: 'easy', km: wu }];
+  let workKm = 0;
+  const reps = s.reps || 1;
+  for (let i = 0; i < reps; i++) {
+    if (s.repMin) { segs.push({ z: s.zone, min: s.repMin }); workKm += (s.repMin * 60) / workPace; }
+    else { segs.push({ z: s.zone, km: s.repKm }); workKm += s.repKm; }
+    if (i < reps - 1 && s.recMin) segs.push({ z: 'jog', min: s.recMin });
+  }
+  segs.push({ z: 'easy', km: cd });
+  const jogKm = reps > 1 && s.recMin ? ((reps - 1) * s.recMin * 60) / (p.easy[0] + 20) : 0;
+  const total = wu + workKm + jogKm + cd;
+  const work = { paceKey: s.paceKey, km: Math.round(workKm * 10) / 10, reps };
+  if (s.repMin) work.repMin = s.repMin; else if (reps > 1 || s.repKm < 5) work.repM = Math.round(s.repKm * 1000);
+  return wk(date, s.type, s.title, total, null, {
+    warmup: s.noStrides ? `${fmtKm(wu)} easy` : `${fmtKm(wu)} easy + 4 strides`,
+    main: s.main,
+    cooldown: `${fmtKm(cd)} easy jog`,
+  }, s.paceKey, tip(s.tipKey || s.type, ctx.weekIdx), { work, segments: segs });
+}
+
+// Occurrence-based progression: the n-th time a session type appears it is
+// a little bigger/different — 80% of the zone's volume cap on first
+// exposure, full cap from the 4th.
+const prog = (n) => Math.min(1, 0.8 + 0.07 * n);
+
+// Threshold (Daniels T): cruise intervals and continuous tempo alternate.
+// T volume per session ≤ ~10% of the week (Daniels), 2.5–10 km.
+function thresholdSession(date, ctx, n) {
+  const T = ctx.p.threshold;
+  const W = clamp(0.10 * ctx.vol, 2.5, 10) * prog(n);
+  const base = { type: 'tempo', paceKey: 'threshold', zone: 'threshold', pace: T, tipKey: 'tempo' };
+  const fmt = n % 4;
+  if (fmt === 1 || fmt === 3) {
+    const min = clamp(Math.round((W * T) / 60 / 5) * 5, 15, 40);
+    if (fmt === 3 && min >= 25) {
+      const half = Math.round(min / 2);
+      return qualitySession(date, ctx, { ...base, title: 'Threshold run', reps: 2, repMin: half, recMin: 2,
+        main: `2 × ${half} min at threshold pace, 2 min easy jog between` });
+    }
+    return qualitySession(date, ctx, { ...base, title: 'Tempo run', reps: 1, repMin: min,
+      main: `${min} min continuous at threshold pace` });
+  }
+  const repKm = W < 3.2 ? 1 : fmt === 2 ? 2 : 1.6;
+  const reps = clamp(Math.round(W / repKm), 2, 6);
+  const rec = repKm >= 2 ? 1.5 : 1;
+  return qualitySession(date, ctx, { ...base, title: 'Cruise intervals', reps, repKm, recMin: rec,
+    main: `${reps} × ${fmtRep(repKm * 1000)} at threshold pace, ${fmtRec(rec)} jog recovery` });
+}
+
+// VO2max (Daniels I): 3–5 min reps, I volume ≤ ~8% of the week.
+function vo2Session(date, ctx, n) {
+  const W = clamp(0.08 * ctx.vol, 2, 8) * prog(n);
+  const opts = W < 3 ? [400, 600, 400, 800, 600, 800] : [800, 1000, 800, 1200, 1000, 1200];
+  const repM = opts[n % opts.length];
+  const reps = clamp(Math.round((W * 1000) / repM), 3, 8);
+  const rec = { 400: 1.5, 600: 2, 800: 2, 1000: 2.5, 1200: 3 }[repM];
+  return qualitySession(date, ctx, { type: 'intervals', title: 'VO2max intervals', paceKey: 'interval', zone: 'interval',
+    pace: ctx.p.interval, reps, repKm: repM / 1000, recMin: rec, tipKey: 'intervals',
+    main: `${reps} × ${fmtRep(repM)} at interval pace, ${fmtRec(rec)} jog recovery` });
+}
+
+// Speed (Daniels R): short fast reps with full recovery, ≤ ~5% of the week.
+function speedSession(date, ctx, n) {
+  const W = clamp(0.05 * ctx.vol, 1.2, 5) * prog(n);
+  const repM = [200, 200, 300, 400, 300, 400][n % 6];
+  const reps = clamp(Math.round((W * 1000) / repM), 6, 12);
+  return qualitySession(date, ctx, { type: 'reps', title: 'Speed reps', paceKey: 'rep', zone: 'rep',
+    pace: ctx.p.rep, reps, repKm: repM / 1000, recMin: repM / 130, tipKey: 'reps',
+    main: `${reps} × ${repM} m at repetition pace, ${repM} m walk/jog recovery` });
+}
+
+// Goal pace = the projected race-day pace for the goal distance. Race-
+// specific work, progressing toward the classic benchmark sessions
+// (5 × 1 km at 5K pace, 3 × 2 km at 10K pace, 2 × 5 km at HM pace, long MP).
+const GOAL_TITLE = { '5k': '5K-pace intervals', '10k': '10K-pace intervals', half: 'Half-marathon pace', marathon: 'Marathon-pace run' };
+function goalSession(date, ctx, n, sharpener = false) {
+  const goal = ctx.goal;
+  const d = GOALS[goal].distKm;
+  const pace = predictRace(ctx.profile.vdot, d) / d;
+  const base = { type: 'mpace', paceKey: 'goalpace', zone: 'goalpace', pace, tipKey: sharpener ? 'sharpener' : 'mpace' };
+  const title = sharpener ? 'Race-week sharpener' : GOAL_TITLE[goal];
+  const reps = (repKm, recMin, r) => qualitySession(date, ctx, { ...base, title, reps: r, repKm, recMin,
+    main: `${r} × ${fmtRep(repKm * 1000)} at goal pace, ${fmtRec(recMin)} jog recovery` });
+  if (sharpener) {
+    const r = ctx.vol < 30 ? 2 : 3;
+    if (goal === '5k') return reps(1, 2, r);
+    if (goal === '10k') return reps(1.6, 2, r);
+    if (goal === 'half') return reps(2, 2, r);
+    return qualitySession(date, ctx, { ...base, title, reps: 1, repKm: 5, cd: 1, noStrides: true,
+      main: '5 km at goal pace, relaxed and controlled' });
+  }
+  if (goal === '5k') {
+    const W = clamp(0.10 * ctx.vol, 2, 6) * prog(n);
+    const rep = W < 3 ? [0.6, 0.8, 0.6, 1][n % 4] : [1, 1.2, 1, 1.6][n % 4];
+    return reps(rep, rep >= 1.6 ? 3 : 2, clamp(Math.round(W / rep), 3, 6));
+  }
+  if (goal === '10k') {
+    const W = clamp(0.12 * ctx.vol, 2.5, 9) * prog(n);
+    const rep = W < 4 ? [1, 1.2, 1, 1.6][n % 4] : [1.6, 2, 1.6, 3][n % 4];
+    return reps(rep, rep >= 3 ? 3 : rep >= 2 ? 2 : 1.5, clamp(Math.round(W / rep), 2, 5));
+  }
+  if (goal === 'half') {
+    const W = clamp(0.2 * ctx.vol, 3, 13) * prog(n);
+    const fmt = n % 4;
+    if (fmt === 3) {
+      const km = Math.max(3, Math.round(W));
+      return qualitySession(date, ctx, { ...base, title, reps: 1, repKm: km, cd: 1,
+        main: `${km} km continuous at goal pace` });
+    }
+    const rep = Math.min(fmt === 2 ? 5 : 3, Math.max(1, roundHalf(W / 2)));
+    return reps(rep, fmt === 1 ? 2 : 3, clamp(Math.round(W / rep), 2, 4));
+  }
+  // marathon: continuous MP block growing 2 km per exposure (6 → 16 km),
+  // capped at ~22% of the week
+  const km = Math.max(4, Math.min(6 + 2 * n, Math.round(clamp(0.22 * ctx.vol, 5, 16))));
+  return qualitySession(date, ctx, { ...base, title, reps: 1, repKm: km, cd: 1, noStrides: true,
+    main: `${km} km at goal pace` });
+}
+
+// Hill repeats: strength and power with less impact. Effort-based — no pace
+// or HR target (gradients make both meaningless).
+function hillSession(date, ctx, n) {
+  const fm = ctx.beginner ? [[5, 30], [6, 30], [6, 45], [8, 45]] : [[6, 45], [8, 45], [6, 60], [8, 60], [10, 60]];
+  const [reps, sec] = fm[Math.min(n, fm.length - 1)];
+  const light = ctx.beginner || ctx.vol < 25;
+  const wu = light ? 1.5 : 2, cd = light ? 1 : 1.5;
+  const segs = [{ z: 'easy', km: wu }];
+  for (let i = 0; i < reps; i++) {
+    segs.push({ z: 'hill', min: sec / 60 });
+    if (i < reps - 1) segs.push({ z: 'jog', min: (sec * 1.6) / 60 });
+  }
+  segs.push({ z: 'easy', km: cd });
+  return wk(date, 'hills', 'Hill repeats', wu + cd + reps * 0.4, null, {
+    warmup: `${fmtKm(wu)} easy`,
+    main: `${reps} × ${sec} s strong uphill effort, jog back down to recover`,
+    cooldown: `${fmtKm(cd)} easy jog`,
+  }, null, tip('hills', ctx.weekIdx), { work: { paceKey: null, reps, repMin: sec / 60 }, segments: segs });
+}
+
+// Time trial: calibrates fitness (logged result → VDOT at full confidence).
+function timeTrial(date, ctx) {
+  const d = ctx.beginner ? 3 : 5;
+  return wk(date, 'tt', `${d === 5 ? '5K' : '3 km'} time trial`, 2 + d + 1.5, null, {
+    warmup: '2 km easy + 4 strides',
+    main: `${d} km time trial: a hard, even effort (RPE 9). Start controlled, finish strong`,
+    cooldown: '1.5 km easy jog',
+  }, null, tip('tt', ctx.weekIdx), {
+    work: { paceKey: null, km: d },
+    segments: [{ z: 'easy', km: 2 }, { z: 'race', km: d }, { z: 'easy', km: 1.5 }],
+  });
+}
+
+// variant: 'easy' | 'mp' (final block at goal pace) | 'ff' (fast finish)
+function longRun(date, km, weekIdx, goal, variant = 'easy', mpN = 0) {
+  let main = 'Steady, relaxed effort at easy pace throughout';
+  let segs = [{ z: 'easy', km: roundHalf(km) }];
+  let t = tip('long', weekIdx);
+  let title = 'Long run';
+  if (variant !== 'easy') {
+    const q = variant === 'mp'
+      ? clamp(Math.min(Math.round(km * 0.35), 5 + 2 * mpN), 4, 16)
+      : clamp(Math.round(km * 0.2), 2, 5);
+    main = `Easy pace, with the final ${q} km at goal pace`;
+    segs = [{ z: 'easy', km: roundHalf(km - q) }, { z: 'goalpace', km: q }];
+    title = variant === 'mp' ? 'Long run with goal pace' : 'Long run, fast finish';
+    t = tip('longq', weekIdx);
+  }
+  return wk(date, 'long', title, km, null, { warmup: null, main, cooldown: null }, 'easy', t, { segments: segs });
 }
 
 function ultraLongRun(date, min, weekIdx, back2back) {
@@ -267,7 +515,7 @@ function ultraLongRun(date, min, weekIdx, back2back) {
     warmup: null,
     main: `${fmtMin(min)} on feet at easy effort (RPE 3-4). Power-hike climbs, run the rest. Practice race fueling.`,
     cooldown: null,
-  }, null, tip('ultralong', weekIdx));
+  }, null, tip('ultralong', weekIdx), { segments: [{ z: 'easy', min }] });
 }
 
 function xtrainDay(date, min, weekIdx) {
@@ -288,51 +536,87 @@ function raceDayWorkout(date, goal) {
     cooldown: 'Walk, eat, celebrate.',
   // 'racepace' (not the fixed marathon-effort zone) so this always matches
   // the "Projected finish" figure — see racePaceForDate.
-  }, g.ultra ? null : 'racepace', tip('race', 0));
+  }, g.ultra ? null : 'racepace', tip('race', 0), { segments: [{ z: 'race', km: g.distKm }] });
 }
 
 // ---- weekly assembly ----
 
-// Decide the quality sessions for a week.
-function qualityTypesFor(goal, phase, experience, maxQuality) {
-  if (maxQuality === 0 || phase === 'taper') return phase === 'taper' && maxQuality > 0 ? ['strides'] : [];
-  const beginnerish = experience === 'beginner';
-  const ultra = GOALS[goal].ultra;
+// Key sessions for a week, in priority order (the first goes on the earlier
+// key day). Base: none early (strides/hill sprints add-ons only), then hill
+// repeats. Build: threshold + VO2max (marathon: threshold + goal pace).
+// Peak: race-specific. Taper: a smaller goal-pace session keeps intensity.
+// Beginners, ≤3-day schedules and deload weeks get one key session.
+function keyKinds(profile, phase, phaseFrac, isDeload, vol) {
+  const goal = profile.goal;
   let list;
-  if (ultra) {
-    // Ultras: steady/hill strength over VO2 work
-    list = { base: ['hills'], build: ['tempo'], peak: ['tempo'] }[phase] || [];
-    if (!beginnerish && phase !== 'base') list = list.concat(['hills']);
-  } else if (goal === '5k' || goal === '10k') {
-    list = { base: ['strides', 'hills'], build: ['tempo', 'intervals'], peak: ['intervals', 'reps'] }[phase];
-  } else if (goal === 'half') {
-    list = { base: ['strides', 'hills'], build: ['tempo', 'intervals'], peak: ['tempo', 'intervals'] }[phase];
-  } else if (goal === 'marathon') {
-    list = { base: ['strides', 'hills'], build: ['tempo', 'mpace'], peak: ['mpace', 'tempo'] }[phase];
-  } else { // fitness
-    list = { base: ['strides'], build: ['tempo', 'intervals'], peak: ['tempo', 'intervals'] }[phase];
+  if (GOALS[goal].ultra) {
+    list = { base: ['hills'], build: ['threshold', 'hills'], peak: ['threshold', 'hills'], taper: ['threshold'] }[phase];
+  } else if (phase === 'base') {
+    list = phaseFrac < 0.5 ? [] : ['hills'];
+  } else if (phase === 'build') {
+    list = ['threshold', goal === 'marathon' ? 'goal' : 'vo2'];
+  } else if (phase === 'peak') {
+    list = {
+      '5k': ['goal', 'speed'], '10k': ['goal', 'vo2'], half: ['goal', 'threshold'],
+      marathon: ['goal', 'threshold'], fitness: ['threshold', 'vo2'],
+    }[goal];
+  } else {
+    list = goal === 'fitness' ? ['threshold'] : ['goal'];
   }
-  return list.slice(0, maxQuality);
+  // One key session for beginners, ≤3-day schedules, deloads and small
+  // weeks (under ~25 km two hard days would dominate the week).
+  if (profile.experience === 'beginner' || profile.daysPerWeek <= 3 || isDeload || vol < 25) list = list.slice(0, 1);
+  return list;
+}
+
+// Neuromuscular add-ons on easy days: strides / hill sprints.
+function addOnKinds(profile, phase, phaseFrac, nKeys) {
+  if (GOALS[profile.goal].ultra) return nKeys ? [] : ['strides'];
+  const many = profile.daysPerWeek >= 5;
+  if (phase === 'base' && phaseFrac < 0.5) {
+    const hill = profile.experience !== 'beginner' && profile.daysPerWeek >= 4;
+    return hill ? (many ? ['strides', 'hills'] : ['hills']) : (many ? ['strides', 'strides'] : ['strides']);
+  }
+  return many || nKeys < 2 ? ['strides'] : [];
+}
+
+function buildKey(kind, date, ctx, occ, advance) {
+  const n = occ[kind] || 0;
+  // deload/taper weeks repeat the last structure (smaller volume) instead of
+  // advancing the progression
+  const use = advance ? n : Math.max(0, n - 1);
+  if (advance) occ[kind] = n + 1;
+  switch (kind) {
+    case 'threshold': return thresholdSession(date, ctx, use);
+    case 'vo2': return vo2Session(date, ctx, use);
+    case 'speed': return speedSession(date, ctx, use);
+    case 'goal': return goalSession(date, ctx, use);
+    case 'hills': return hillSession(date, ctx, use);
+    case 'tt': return timeTrial(date, ctx);
+    default: return null;
+  }
 }
 
 // progFrac: 0→1 across the pre-taper weeks — long runs build smoothly week
 // by week rather than stepping at phase boundaries.
-function buildWeek(profile, weekIdx, weekStart, volKm, phase, totalWeeks, raceDate, progFrac) {
+function buildWeek(profile, weekIdx, weekStart, volKm, phase, raceDate, progFrac, o) {
   const g = GOALS[profile.goal];
   const idx = EXP_IDX[profile.experience];
-  const days = DAY_TEMPLATES[profile.daysPerWeek].slice();
-  const isDeload = phase !== 'taper' && weekIdx % 4 === 3;
-  const workouts = [];
+  const ultra = g.ultra;
+  const ctx = {
+    profile, p: trainingPaces(profile.vdot || 40), beginner: profile.experience === 'beginner',
+    vol: volKm, weekIdx, phase, goal: profile.goal,
+  };
+  const days = runDaysOf(profile);
+  const L = longDayOf(profile);
+  const longDay = days.includes(L) ? L : days.includes(5) ? 5 : days.includes(6) ? 6 : days[days.length - 1];
+  const isDeload = o.isDeload;
 
-  // Quality budget: beginner 1, others 2 (needs ≥4 run days for 2); base phase max 1.
-  let maxQ = profile.experience === 'beginner' ? 1 : 2;
-  if (profile.daysPerWeek <= 3) maxQ = 1;
-  if (phase === 'base') maxQ = Math.min(maxQ, 1);
-  if (isDeload) maxQ = Math.min(maxQ, 1);
-  const qTypes = qualityTypesFor(profile.goal, phase, profile.experience, maxQ);
+  if (raceDate && mondayOf(raceDate) === weekStart) {
+    return buildRaceWeek(profile, ctx, weekIdx, weekStart, volKm, phase, raceDate, days);
+  }
 
   // Long run sizing — continuous progression toward the cap, dip in taper
-  const ultra = g.ultra;
   let longKm = null, longMin = null, b2bMin = null;
   const phaseProg = phase === 'taper' ? 0.55 : 0.65 + 0.35 * clamp(progFrac ?? 1, 0, 1);
   if (ultra) {
@@ -348,178 +632,256 @@ function buildWeek(profile, weekIdx, weekStart, volKm, phase, totalWeeks, raceDa
     }
   } else {
     const cap = LONG_CAP_KM[profile.goal][idx];
-    longKm = Math.min(cap * phaseProg, volKm * 0.35);
+    longKm = Math.min(cap * phaseProg, volKm * (LONG_SHARE[profile.goal] ?? 0.35));
     if (isDeload) longKm *= 0.75;
     longKm = Math.max(longKm, Math.min(volKm * 0.28, cap));
   }
-
-  // Race week: place the race, taper everything else around it. The race
-  // day itself is always scheduled, even when it isn't a usual training day.
-  const raceThisWeek = raceDate && mondayOf(raceDate) === weekStart;
-  if (raceThisWeek) {
-    const raceDow = dayIndex(raceDate);
-    if (!days.includes(raceDow)) days.push(raceDow);
-    days.sort((a, b) => a - b);
+  // Ultra back-to-back day: the day after a Saturday long run, the day
+  // before a Sunday one (never wrapping into the start of the week).
+  let b2bDay = null;
+  if (b2bMin) {
+    const cand = longDay === 6 ? 5 : longDay + 1;
+    if (cand <= 6 && days.includes(cand)) b2bDay = cand; else b2bMin = null;
   }
 
-  // Assign days: Sat(5)=long, Sun(6)=b2b/recovery, quality on first non-adjacent days.
-  const longDay = days.includes(5) ? 5 : days[days.length - 1];
-  const qualityDays = days.filter((d) => d !== longDay && d !== 6).slice(0, 2);
-  // keep a day between the two quality sessions where possible
-  if (qualityDays.length === 2 && qualityDays[1] - qualityDays[0] < 2 && days.length > 3) {
-    const alt = days.find((d) => d > qualityDays[0] + 1 && d !== longDay && d !== 6);
-    if (alt != null) qualityDays[1] = alt;
+  // Key sessions
+  let kinds = o.tt ? ['tt'] : keyKinds(profile, phase, o.phaseFrac, isDeload, volKm);
+  const free = days.filter((d) => d !== longDay && d !== b2bDay);
+  // leave at least one easy day when there's room (2-day plans: long + key)
+  kinds = kinds.slice(0, Math.min(kinds.length, Math.max(Math.min(1, free.length), free.length - 1), profile.daysPerWeek <= 2 ? 1 : 2));
+  const keyDays = pickKeyDays(free, longDay, kinds.length);
+  const advance = !isDeload && phase !== 'taper';
+  const keys = new Map();
+  // Size sessions on the volume this week can actually hold (few run days
+  // can't absorb the nominal target), and shrink them in the taper
+  // (Bosquet: cut volume, not intensity).
+  let keyVol = ultra ? volKm : Math.min(volKm, longKm + (days.length - 1) * Math.min(16, longKm * 0.85));
+  if (phase === 'taper') keyVol *= 0.7;
+  const keyCtx = { ...ctx, vol: keyVol };
+  const keyOrder = [];
+  kinds.forEach((k, i) => {
+    const w = buildKey(k, addDays(weekStart, keyDays[i]), keyCtx, o.occ, advance);
+    if (w) { keys.set(keyDays[i], w); keyOrder.push(w); }
+  });
+
+  // Small weeks can't carry two structured sessions plus the long run —
+  // drop the lower-priority one rather than overshooting the week's volume.
+  const longGuess = ultra ? (longMin || 0) / 7 : longKm;
+  const sumKeys = () => [...keys.values()].reduce((s, w) => s + (w.distKm || 0), 0);
+  while (keys.size > 1 && longGuess + sumKeys() + 3 > volKm * 1.05) {
+    const lastKind = kinds.pop();
+    const day = [...keys.entries()].find(([, w]) => w === keyOrder[keyOrder.length - 1])?.[0];
+    keyOrder.pop();
+    if (day != null) keys.delete(day);
+    if (lastKind && advance) o.occ[lastKind] = Math.max(0, (o.occ[lastKind] || 1) - 1);
   }
 
-  // Volume bookkeeping (km-equivalent; ultra time converted at rough easy pace later)
-  const easyDays = days.filter((d) => d !== longDay && !qualityDays.slice(0, qTypes.length).includes(d));
+  // The long run stays the longest run of the week.
+  const maxKey = Math.max(0, ...[...keys.values()].map((w) => w.distKm || 0));
+  if (!ultra && maxKey) longKm = Math.max(longKm, Math.min(maxKey + 0.5, LONG_CAP_KM[profile.goal][idx]));
 
-  // Estimate quality session distance: ~15% of week each, clamped
-  const qKm = clamp(roundHalf(volKm * 0.16), 4, 14);
-  // Long run stays the longest session of the week, even on tiny deload
-  // weeks where the quality-session floor would otherwise overtake it.
-  if (!ultra && qTypes.length) {
-    longKm = Math.max(longKm, Math.min(qKm + 0.5, LONG_CAP_KM[profile.goal][idx]));
-  }
+  // Easy-day budget: recovery the day after the long run, easy elsewhere.
+  const recDay = !ultra ? (longDay + 1) % 7 : null;
+  let easyDays = days.filter((d) => d !== longDay && d !== b2bDay && !keys.has(d));
+  const weightOf = (d) => (d === recDay ? 0.65 : 1);
+  const keyKm = [...keys.values()].reduce((s, w) => s + (w.distKm || 0), 0);
   const longEquivKm = ultra ? (longMin != null ? longMin / 7 : 0) : longKm; // ~7 min/km easy-effort estimate
-  const b2bEquivKm = b2bMin ? b2bMin / 7 : 0;
-  let remaining = volKm - longEquivKm - b2bEquivKm - qTypes.length * qKm;
-  const nEasy = easyDays.length - (b2bMin && easyDays.includes(6) ? 1 : 0);
-  // When the week's volume can't feed every scheduled day at least ~3 km,
-  // surplus easy days become rest days rather than flooring everything at
-  // 3 km (which would silently inflate low-volume weeks).
-  let usableEasy = nEasy;
-  while (usableEasy > 1 && remaining / usableEasy < 3) usableEasy--;
-  const skipDays = new Set(
-    nEasy > usableEasy
-      ? easyDays.filter((d) => !(b2bMin && d === 6)).slice(usableEasy - nEasy)
-      : []);
-  let easyKm = usableEasy > 0 ? remaining / usableEasy : 0;
-  // The long run must stay the longest run of the week: easy runs cap at
-  // ~85% of it (overflow volume is dropped, not dumped onto easy days).
-  const easyCapKm = longKm != null ? Math.max(4, Math.min(16, longKm * 0.85)) : 16;
-  easyKm = clamp(roundHalf(easyKm), 3, easyCapKm);
+  const remaining = volKm - longEquivKm - (b2bMin ? b2bMin / 7 : 0) - keyKm;
+  // When the week's volume can't feed every easy day at least ~3 km, the
+  // most crowded easy days (closest to a hard day) become rest days rather
+  // than flooring everything at 3 km (which would inflate small weeks).
+  const hard = [longDay, ...keys.keys()];
+  const crowd = (d) => Math.min(...hard.map((h) => Math.min(cyc(d, h), cyc(h, d))));
+  while (easyDays.length > 1 && remaining / easyDays.reduce((s, d) => s + weightOf(d), 0) < 3) {
+    const drop = easyDays.filter((d) => d !== recDay).sort((a, b) => crowd(a) - crowd(b) || b - a)[0] ?? easyDays[0];
+    easyDays = easyDays.filter((d) => d !== drop);
+  }
+  const wsum = easyDays.reduce((s, d) => s + weightOf(d), 0);
+  // Easy runs cap at ~85% of the long run (overflow volume is dropped, not
+  // dumped onto easy days).
+  const easyCapKm = longKm != null ? Math.max(3, Math.min(16, longKm * 0.85)) : 16;
+  const easyKm = clamp(roundHalf(wsum ? remaining / wsum : 0), 3, easyCapKm);
+  const recKm = Math.max(3, roundHalf(Math.min(easyKm * 0.65, longKm != null ? longKm * 0.5 : easyKm)));
 
-  // Injury substitution: convert the last easy day to optional cross-training
-  const liveEasy = easyDays.filter((d) => !skipDays.has(d));
-  const xtrainDayIdx = profile.injuries.length && liveEasy.length > 1
-    ? liveEasy[liveEasy.length - 1] === 6 && b2bMin ? liveEasy[liveEasy.length - 2] : liveEasy[liveEasy.length - 1]
-    : null;
+  // Add-ons go on the easy days furthest from the hard days.
+  const addKinds = o.tt ? [] : addOnKinds(profile, phase, o.phaseFrac, keys.size);
+  const addOn = new Map();
+  for (const k of addKinds) {
+    // greedy: the easy day furthest from hard days and earlier add-ons
+    const taken = [...hard, ...addOn.keys()];
+    const dist = (d) => Math.min(...taken.map((h) => Math.min(cyc(d, h), cyc(h, d))));
+    const pick = easyDays.filter((d) => d !== recDay && !addOn.has(d)).sort((a, b) => dist(b) - dist(a) || a - b)[0];
+    if (pick != null) addOn.set(pick, k);
+  }
 
-  let qUsed = 0;
+  // Injury substitution: the last plain easy day becomes optional cross-training
+  const plain = easyDays.filter((d) => d !== recDay && !addOn.has(d));
+  const xDay = profile.injuries.length && easyDays.length > 1 && plain.length ? plain[plain.length - 1] : null;
+
+  const workouts = [];
   for (const d of days) {
     const date = addDays(weekStart, d);
-    // Race day is always scheduled, even if the volume budget would
-    // otherwise have turned this into a rest day — check before skipDays.
-    if (raceDate && date === raceDate && raceThisWeek) {
-      workouts.push(raceDayWorkout(date, profile.goal));
-      continue;
-    }
-    if (skipDays.has(d)) continue; // volume too low to feed this day — rest
-    if (raceThisWeek && diffDays(date, raceDate) < 0) continue; // nothing after race
-    if (raceThisWeek && diffDays(date, raceDate) <= 2 && diffDays(date, raceDate) > 0) {
-      // day or two before race: short shakeout
-      workouts.push(stridesRun(date, 4, weekIdx));
-      continue;
-    }
-    if (d === longDay && !raceThisWeek) {
+    if (d === longDay) {
+      let variant = 'easy', mpN = 0;
+      if (!isDeload && (phase === 'build' || phase === 'peak') && (profile.goal === 'marathon' || profile.goal === 'half')) {
+        const n = o.occ.longQ || 0;
+        o.occ.longQ = n + 1;
+        if (n % 2 === 1) { variant = profile.goal === 'marathon' ? 'mp' : 'ff'; mpN = Math.floor(n / 2); }
+      }
       workouts.push(ultra ? ultraLongRun(date, longMin, weekIdx, false)
-                          : longRun(date, longKm, weekIdx, profile.goal, phase));
-      continue;
-    }
-    if (d === 6 && b2bMin && !raceThisWeek) {
+        : longRun(date, longKm, weekIdx, profile.goal, variant, mpN));
+    } else if (d === b2bDay) {
       workouts.push(ultraLongRun(date, b2bMin, weekIdx, true));
-      continue;
-    }
-    if (qualityDays.includes(d) && qUsed < qTypes.length && !raceThisWeek) {
-      const t = qTypes[qUsed++];
-      const builders = {
-        tempo: () => tempoRun(date, qKm, weekIdx, phase),
-        intervals: () => intervalRun(date, qKm, weekIdx),
-        reps: () => repRun(date, Math.min(qKm, 9), weekIdx),
-        mpace: () => mpaceRun(date, qKm, weekIdx),
-        hills: () => hillsRun(date, Math.min(qKm, 10), weekIdx),
-        strides: () => stridesRun(date, easyKm, weekIdx),
-      };
-      workouts.push(builders[t]());
-      continue;
-    }
-    if (d === xtrainDayIdx) {
+    } else if (keys.has(d)) {
+      workouts.push(keys.get(d));
+    } else if (!easyDays.includes(d)) {
+      continue; // volume too low to feed this day — rest
+    } else if (d === xDay) {
       workouts.push(xtrainDay(date, 40, weekIdx));
-      continue;
+    } else if (d === recDay) {
+      workouts.push(easyRun(date, recKm, weekIdx, 'recovery'));
+    } else if (addOn.has(d)) {
+      workouts.push(stridesRun(date, easyKm, weekIdx, addOn.get(d) === 'hills' ? 'hills' : 'strides'));
+    } else {
+      workouts.push(easyRun(date, easyKm, weekIdx));
     }
-    // Recovery runs bracket the long run: the Sunday directly after it
-    // (non-ultra — ultras deliberately stack back-to-back volume) and the
-    // Monday after the weekend for 6–7 day schedules.
-    const afterLong = d === 6 && longDay === 5 && !ultra;
-    const type = afterLong || (d === 0 && profile.daysPerWeek >= 6) ? 'recovery' : 'easy';
-    const km = type === 'recovery'
-      ? Math.max(3, roundHalf(Math.min(easyKm * 0.65, longKm != null ? longKm * 0.5 : easyKm)))
-      : easyKm;
-    workouts.push(easyRun(date, km, weekIdx, type));
   }
+  return weekResult(weekIdx, weekStart, phase, isDeload, workouts);
+}
 
-  // Report the volume actually scheduled (caps can absorb less than the
-  // nominal target), so plan rows and progress math stay honest.
-  const scheduledKm = workouts.reduce(
-    (s, x) => s + (x.distKm ?? (x.durMin && x.type !== 'xtrain' ? x.durMin / 7 : 0)), 0);
+// Race week: race-specific sharpener 3–5 days out (intensity maintained,
+// volume cut — Bosquet et al. 2007), easy + strides two days out, a short
+// shakeout the day before, nothing after the race.
+function buildRaceWeek(profile, ctx, weekIdx, weekStart, volKm, phase, raceDate, days) {
+  const g = GOALS[profile.goal];
+  const R = dayIndex(raceDate);
+  const before = days.filter((d) => d < R);
+  const budget = volKm * 0.6; // non-race running this week
+  const workouts = [raceDayWorkout(raceDate, profile.goal)];
+  const sharpDay = g.ultra ? null : [R - 4, R - 3, R - 5].find((d) => before.includes(d));
+  const fixed = new Map();
+  if (sharpDay != null) fixed.set(sharpDay, goalSession(addDays(weekStart, sharpDay), ctx, 0, true));
+  if (before.includes(R - 2) && !fixed.has(R - 2)) fixed.set(R - 2, stridesRun(addDays(weekStart, R - 2), 4, weekIdx, 'strides', 4));
+  if (before.includes(R - 1) && profile.daysPerWeek >= 4) fixed.set(R - 1, stridesRun(addDays(weekStart, R - 1), 3, weekIdx, 'shakeout', 3));
+  const fixedKm = [...fixed.values()].reduce((s, w) => s + w.distKm, 0);
+  let easy = before.filter((d) => !fixed.has(d));
+  while (easy.length > 0 && (budget - fixedKm) / easy.length < 3) easy = easy.slice(1);
+  const easyKm = easy.length ? clamp(roundHalf((budget - fixedKm) / easy.length), 3, 8) : 0;
+  for (const d of before) {
+    if (fixed.has(d)) workouts.push(fixed.get(d));
+    else if (easy.includes(d)) workouts.push(easyRun(addDays(weekStart, d), easyKm, weekIdx));
+  }
+  workouts.sort((a, b) => a.date.localeCompare(b.date));
+  return weekResult(weekIdx, weekStart, phase, false, workouts);
+}
+
+const workoutKm = (x) => x.distKm ?? (x.durMin && x.type !== 'xtrain' ? x.durMin / 7 : 0);
+
+// Report the volume actually scheduled (caps can absorb less than the
+// nominal target), so plan rows and progress math stay honest.
+function weekResult(idx, start, phase, deload, workouts) {
   return {
-    idx: weekIdx, start: weekStart, phase, deload: isDeload,
-    targetKm: Math.round(scheduledKm), workouts,
+    idx, start, phase, deload,
+    targetKm: Math.round(workouts.reduce((s, x) => s + workoutKm(x), 0)), workouts,
   };
 }
 
-export function generatePlan(profile, fromDate = null) {
+// Time-trial weeks: with no race time on file, a 5K (beginners: 3 km) time
+// trial in week 2 calibrates every pace in the plan; plans with 10+ pre-taper
+// weeks also get a mid-plan benchmark in the deload week nearest the middle
+// (fresh legs → an honest reading). Results feed the fitness model at full
+// confidence.
+function timeTrialWeeks(profile, totalWeeks, taperWeeks) {
+  const out = new Set();
+  if (GOALS[profile.goal].ultra) return out;
+  const pre = totalWeeks - taperWeeks;
+  if (!profile.refRace && (profile.weeklyKm || 0) >= 10 && pre >= 4) out.add(1);
+  if (pre >= 10) {
+    const cands = [];
+    for (let w = 4; w <= pre - 2; w++) if (deloadAt(w, totalWeeks, taperWeeks)) cands.push(w);
+    const target = pre * 0.55;
+    const pick = cands.filter((w) => ![...out].some((t) => Math.abs(t - w) < 3))
+      .sort((a, b) => Math.abs(a - target) - Math.abs(b - target))[0];
+    if (pick != null) out.add(pick);
+  }
+  return out;
+}
+
+// opts (mid-plan regeneration, see replanFrom):
+//   timelineStart — Monday the plan's week 1 started (defaults to this one)
+//   regenFrom     — Monday of the first week to return; earlier weeks are
+//                   still generated (so progression/deload rhythm continue)
+//                   but discarded
+//   startKm       — current training load to continue from at regenFrom
+//   trimBefore    — drop workouts dated before this (already-past days)
+export function generatePlan(profile, fromDate = null, opts = {}) {
   const g = GOALS[profile.goal];
   const created = fromDate || todayStr();
-  const start = mondayOf(created);
+  const start = opts.timelineStart || mondayOf(created);
   let totalWeeks;
   if (profile.goal === 'fitness' || !profile.raceDate) {
     totalWeeks = 12;
   } else {
     totalWeeks = clamp(Math.floor(diffDays(start, profile.raceDate) / 7) + 1, 2, 32);
   }
-  const taperWeeks = profile.raceDate ? Math.min(g.taper, Math.max(0, totalWeeks - 2)) : 0;
-  const vols = volumeSeries(profile, totalWeeks, taperWeeks);
+  const taperWeeks = profile.raceDate && profile.goal !== 'fitness' ? Math.min(g.taper, Math.max(0, totalWeeks - 2)) : 0;
+  const k = opts.regenFrom ? clamp(Math.round(diffDays(start, opts.regenFrom) / 7), 0, totalWeeks - 1) : 0;
+  const vols = volumeSeries(profile, totalWeeks, taperWeeks, k, opts.startKm ?? null);
+  const pre = totalWeeks - taperWeeks;
+  const phases = Array.from({ length: totalWeeks }, (_, w) => phaseFor(w, totalWeeks, taperWeeks, g.ultra));
+  const tts = timeTrialWeeks(profile, totalWeeks, taperWeeks);
+  const occ = {};
   const weeks = [];
   for (let w = 0; w < totalWeeks; w++) {
     const weekStart = addDays(start, w * 7);
-    const phase = profile.raceDate || profile.goal !== 'fitness'
-      ? phaseFor(w, totalWeeks, taperWeeks, g.ultra)
-      : phaseFor(w, totalWeeks, 0, false);
-    const pre = totalWeeks - taperWeeks;
+    const phase = phases[w];
+    const first = phases.indexOf(phase);
+    const len = phases.lastIndexOf(phase) - first + 1;
+    const phaseFrac = len > 1 ? (w - first) / (len - 1) : 1;
     const progFrac = pre > 1 ? w / (pre - 1) : 1;
-    weeks.push(buildWeek(profile, w, weekStart, vols[w], phase, totalWeeks, profile.raceDate, progFrac));
+    const isDeload = deloadAt(w, totalWeeks, taperWeeks);
+    weeks.push(buildWeek(profile, w, weekStart, vols[w], phase, profile.goal === 'fitness' ? null : profile.raceDate,
+      progFrac, { isDeload, phaseFrac, occ, tt: tts.has(w) }));
   }
-  // Smooth actual scheduled volume: structural changes (a second quality
-  // session appearing, caps releasing) can make the scheduled sum jump more
-  // than the nominal series' ≤10% — trim easy/recovery distance to restore
-  // the guarantee. Long runs and quality sessions are never touched.
-  const sumKm = (ws) => ws.reduce(
-    (s, x) => s + (x.distKm ?? (x.durMin && x.type !== 'xtrain' ? x.durMin / 7 : 0)), 0);
+  // Smooth actual scheduled volume: structural changes (a key session
+  // appearing, caps releasing) can make the scheduled sum jump more than the
+  // nominal series' ≤10% — trim easy/recovery distance to restore the
+  // guarantee. Long runs and structured sessions are never touched.
+  const sumKm = (ws) => ws.reduce((s, x) => s + workoutKm(x), 0);
   let prevFull = null;
   for (const wk of weeks) {
+    if (wk.idx === k) prevFull = null;
     if (wk.phase === 'taper' || wk.deload) continue;
     if (prevFull != null) {
       const capKm = Math.max(prevFull * 1.10, prevFull + 1);
       let over = sumKm(wk.workouts) - capKm;
       if (over > 0.25) {
-        // easy/recovery first (floor 3), then quality (floor 4); never long
-        const stages = [
-          [(x) => ['easy', 'recovery', 'strides'].includes(x.type), 3],
-          [(x) => ['tempo', 'intervals', 'reps', 'mpace', 'hills'].includes(x.type), 4],
-        ];
-        for (const [match, floor] of stages) {
-          const cuttable = wk.workouts
-            .filter((x) => match(x) && x.distKm > floor)
-            .sort((a, b) => b.distKm - a.distKm);
-          for (const e of cuttable) {
-            if (over <= 0.25) break;
-            const cut = Math.min(over, e.distKm - floor);
-            e.distKm = roundHalf(e.distKm - cut);
-            over -= cut;
-          }
+        const cuttable = wk.workouts
+          .filter((x) => ['easy', 'recovery', 'strides'].includes(x.type) && x.distKm > 3)
+          .sort((a, b) => b.distKm - a.distKm);
+        for (const e of cuttable) {
           if (over <= 0.25) break;
+          const cut = Math.min(over, e.distKm - 3);
+          e.distKm = roundHalf(e.distKm - cut);
+          if (e.segments?.[0]?.km != null) e.segments[0].km = e.distKm;
+          over -= cut;
+        }
+        // Still over with every easy run at the 3 km floor (typically an easy
+        // day that just reappeared as volume grew): make it a rest day.
+        while (over > 0.25) {
+          const drop = wk.workouts.filter((x) => (x.type === 'easy' || x.type === 'strides') && x.status === 'planned')
+            .sort((a, b) => a.distKm - b.distKm)[0];
+          if (!drop) break;
+          wk.workouts = wk.workouts.filter((x) => x !== drop);
+          over -= drop.distKm;
+        }
+        // Last resort with two key sessions: the smaller one becomes an easy run.
+        const keysIn = wk.workouts.filter((x) => ['tempo', 'intervals', 'reps', 'mpace', 'hills'].includes(x.type));
+        if (over > 0.25 && keysIn.length >= 2) {
+          const k2 = keysIn.sort((a, b) => a.distKm - b.distKm)[0];
+          const repl = easyRun(k2.date, Math.max(3, roundHalf(k2.distKm - over)), wk.idx);
+          over -= k2.distKm - repl.distKm;
+          wk.workouts = wk.workouts.map((x) => (x === k2 ? repl : x));
         }
         wk.targetKm = Math.round(sumKm(wk.workouts));
       }
@@ -530,18 +892,19 @@ export function generatePlan(profile, fromDate = null) {
   // The plan starts the day it is generated: days earlier in the calendar
   // week never existed as training days, so they must not be scheduled (they
   // would instantly read as "missed").
-  const first = weeks[0];
-  if (first) {
-    const kept = first.workouts.filter((x) => x.date >= created);
-    if (kept.length !== first.workouts.length) {
-      first.workouts = kept;
-      first.targetKm = Math.round(kept.reduce(
-        (s, x) => s + (x.distKm ?? (x.durMin ? x.durMin / 7 : 0)), 0));
+  const trim = (wk, from) => {
+    const kept = wk.workouts.filter((x) => x.date >= from);
+    if (kept.length !== wk.workouts.length) {
+      wk.workouts = kept;
+      wk.targetKm = Math.round(sumKm(kept));
     }
-  }
+  };
+  if (k === 0 && weeks[0]) trim(weeks[0], created);
+  if (opts.trimBefore && weeks[k]) trim(weeks[k], opts.trimBefore);
   return {
     createdAt: created, startDate: start, goal: profile.goal,
-    raceDate: profile.raceDate || null, totalWeeks, weeks,
+    raceDate: profile.goal === 'fitness' ? null : profile.raceDate || null, totalWeeks,
+    weeks: weeks.slice(k),
   };
 }
 
@@ -758,30 +1121,66 @@ export function goalPaceSec(profile, plan = null, extraLogs = []) {
   return racePaceForDate(profile, raceDate, d, plan, extraLogs);
 }
 
-// Regenerate future weeks (from the current week) after a profile change,
-// keeping past weeks and their logs intact.
-export function replanFrom(plan, profile, fromDateStr) {
+// Most recent full-load (non-deload, non-taper) planned week volume before
+// `beforeMonday` — the load a regenerated plan continues from.
+export function recentLoadKm(plan, beforeMonday) {
+  if (!plan?.weeks) return null;
+  const full = plan.weeks.filter((w) => w.start < beforeMonday && !w.deload && w.phase !== 'taper');
+  const last = full[full.length - 1];
+  return last && last.workouts.length >= 2 ? last.targetKm : null;
+}
+
+// Regenerate future weeks after a profile change, keeping history intact.
+//
+// - Past weeks are kept as they are. So is the current week once anything
+//   in it has been logged/skipped (or with opts.keepCurrentWeek): changes then
+//   apply from next Monday, so a mid-week change can't stack extra quality
+//   sessions on top of ones already run.
+// - The new weeks are generated on the plan's ORIGINAL timeline (same week
+//   1), so week numbers, phase split, deload rhythm, session progression and
+//   long-run progression all continue instead of restarting — and weekly
+//   volume continues from the current planned load (opts.startKm overrides)
+//   rather than dropping back to the onboarding number.
+// - Anything already logged in a regenerated week is carried over.
+export function replanFrom(plan, profile, fromDateStr, opts = {}) {
+  if (!plan?.weeks?.length) return generatePlan(profile, fromDateStr);
   const curMonday = mondayOf(fromDateStr);
-  const past = plan ? plan.weeks.filter((w) => w.start < curMonday) : [];
-  const fresh = generatePlan(profile, fromDateStr);
-  // Preserve logs for already-actioned workouts earlier in the current week
-  if (plan) {
-    const cur = plan.weeks.find((w) => w.start === curMonday);
-    const freshCur = fresh.weeks.find((w) => w.start === curMonday);
-    if (cur && freshCur) {
-      const done = cur.workouts.filter((x) => x.status !== 'planned');
-      freshCur.workouts = freshCur.workouts.filter(
-        (x) => !done.some((d) => d.date === x.date)
-      ).concat(done).sort((a, b) => a.date.localeCompare(b.date));
+  const cur = plan.weeks.find((w) => w.start === curMonday);
+  const actioned = cur && cur.workouts.some((x) => x.status !== 'planned');
+  const regenMonday = cur && (actioned || opts.keepCurrentWeek) ? addDays(curMonday, 7) : curMonday;
+  const raceDate = profile.goal === 'fitness' ? null : profile.raceDate;
+  if (raceDate && raceDate < regenMonday) return plan; // nothing left to regenerate
+  const past = plan.weeks.filter((w) => w.start < regenMonday);
+  const load = opts.startKm ?? recentLoadKm(plan, regenMonday);
+  const startKm = past.length && load ? load : null;
+  // A general-fitness plan runs in 12-week blocks; its timeline is the
+  // current block.
+  const timelineStart = (!raceDate && plan.blockStart) || plan.weeks[0].start;
+  const span = raceDate ? Math.floor(diffDays(timelineStart, raceDate) / 7) + 1 : 12;
+  const k = Math.round(diffDays(timelineStart, regenMonday) / 7);
+  const trimBefore = fromDateStr > regenMonday ? fromDateStr : null;
+  let fresh;
+  if (span <= 32 && k >= 0 && k < span) {
+    fresh = generatePlan(profile, plan.createdAt, { timelineStart, regenFrom: regenMonday, startKm, trimBefore });
+    if (!raceDate) fresh.blockStart = timelineStart;
+  } else {
+    // Past the end of the timeline (a finished fitness block, or a very
+    // long new race timeline): a fresh block from now, continuing from the
+    // current training load.
+    fresh = generatePlan(profile, trimBefore || regenMonday, { startKm });
+    fresh.blockStart = fresh.startDate;
+  }
+  for (const fw of fresh.weeks) {
+    const old = plan.weeks.find((w) => w.start === fw.start);
+    const keep = old ? old.workouts.filter((x) => x.status !== 'planned') : [];
+    if (keep.length) {
+      fw.workouts = fw.workouts.filter((x) => !keep.some((d) => d.date === x.date))
+        .concat(keep).sort((a, b) => a.date.localeCompare(b.date));
     }
   }
-  // Renumber idx contiguously across the kept past weeks + the freshly
-  // generated ones. Without this the fresh weeks keep their own 0-based idx,
-  // so a mid-plan change made the UI show "Wk 1,2,3,1,2,3,4…" (duplicate week
-  // numbers). Each week's phase/deload were already computed and are left as
-  // they are — only the display index is corrected.
   fresh.weeks = past.concat(fresh.weeks).map((w, i) => ({ ...w, idx: i }));
-  fresh.startDate = past.length ? past[0].start : fresh.startDate;
+  fresh.startDate = timelineStart;
+  fresh.createdAt = plan.createdAt;
   fresh.totalWeeks = fresh.weeks.length;
   return fresh;
 }
@@ -829,7 +1228,7 @@ export function missedWorkouts(plan, today = todayStr()) {
   return week.workouts.filter((x) => x.date < today && x.status === 'planned' && x.type !== 'race');
 }
 
-const PRIORITY = { race: 5, long: 4, tempo: 3, intervals: 3, reps: 3, mpace: 3, hills: 3, strides: 2, easy: 1, recovery: 1, xtrain: 0 };
+const PRIORITY = { race: 5, long: 4, tt: 3, tempo: 3, intervals: 3, reps: 3, mpace: 3, hills: 3, strides: 2, easy: 1, recovery: 1, xtrain: 0 };
 
 // Re-place this week's remaining sessions over the remaining days:
 // priority sessions (long > quality) survive, easy runs are dropped first.
